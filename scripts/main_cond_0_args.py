@@ -7,6 +7,18 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
+import faulthandler
+faulthandler.enable()
+print("Faulthandler enabled")
+
+import torch
+assert torch.cuda.is_available(), "No CUDA!"
+_ = torch.zeros(1, device='cuda')
+del _
+print(f"* PyTorch CUDA OK: {torch.cuda.get_device_name(0)}")
+
+from utils.kitti_eval.nms_gpu import rotate_iou_gpu_eval  # Pre-compile all @cuda.jit kernels
+print("* Numba CUDA context initialized successfully")
 import argparse
 from pipelines.pipeline_detection_v1_0 import PipelineDetection_v1_0
 

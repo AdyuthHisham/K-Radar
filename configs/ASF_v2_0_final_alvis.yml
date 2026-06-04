@@ -12,8 +12,8 @@ GENERAL:
   DEVICE: 'gpu'
   RESUME:
     IS_RESUME: False
-    PATH_EXP: # None
-    START_EP: # None
+    PATH_EXP: './logs/exp_260505_114109_A2FUSION_rlc_l1d256_l2p2t32d256g_l2g_scl_mha16'
+    START_EP: 4
     IS_COPY_LOGS: True
   
   LOGGING:
@@ -21,7 +21,7 @@ GENERAL:
     PATH_LOGGING: './logs'
     IS_SAVE_MODEL: True
     INTERVAL_EPOCH_MODEL: 1
-    INTERVAL_EPOCH_UTIL: 2
+    INTERVAL_EPOCH_UTIL: 3
 get_loss_from: 'detector'
 is_validation_updated: True
 ### ----- General ----- ###
@@ -279,7 +279,7 @@ OPTIMIZER: # Training
   BATCH_SIZE: 2
   NUM_WORKERS: 0 # 0 for dataloader_error / 4 for batch 16
 
-  MAX_EPOCH: 2 
+  MAX_EPOCH: 11
   
   SCHEDULER: 'CosineAnnealingLR' # in [None (empty), 'LambdaLR', 'CosineAnnealingLR']
   TYPE_TOTAL_ITER: 'every' # in ['every', 'all'] / every epoch
@@ -292,7 +292,7 @@ VAL:
   IS_CONSIDER_VAL_SUBSET: False
   VAL_PER_EPOCH_SUBSET: 1
   NUM_SUBSET: 500 # 500
-  VAL_PER_EPOCH_FULL: 2 # epoch for validate full dataset
+  VAL_PER_EPOCH_FULL: 11 # epoch for validate full dataset
 
   LIST_VAL_CONF_THR: [0.0, 0.3]
   LIST_VAL_IOU: [0.7, 0.5, 0.3]

@@ -1,4 +1,4 @@
-'''
+''''
 * Copyright (c) AVELab, KAIST. All rights reserved.
 * author: Donghee Paek, AVELab, KAIST
 * e-mail: donghee.paek@kaist.ac.kr
@@ -50,7 +50,7 @@ class PipelineDetection_v1_0():
             except:
                 print('* Exception error: check cfg.GENERAL for seed')
                 set_random_seed(cfg.GENERAL.SEED)
-        
+
         print('* K-Radar dataset is being loaded.')
         self.dataset_train = build_dataset(self, split='train') if self.mode == 'train' else None
         self.dataset_test = build_dataset(self, split='test')
@@ -75,7 +75,7 @@ class PipelineDetection_v1_0():
             self.set_validate()
         else:
             self.is_validate = False
-        
+
         if self.cfg.GENERAL.RESUME.IS_RESUME:
             self.resume_network()
 
@@ -87,9 +87,9 @@ class PipelineDetection_v1_0():
 
         # Vis
         self.set_vis()
-        
+
         # self.show_pline_description()
-        
+
         # Thanks to Felix Fent (in TUM) and Miao Zhang (in Bosch Research)
         # Fixed mixed interpolation (issue #28) and z_center (issue #36) in evaluation
         self.is_validation_updated = self.cfg.get('is_validation_updated', False)
@@ -105,7 +105,7 @@ class PipelineDetection_v1_0():
                 new_config = yaml.safe_load(f)
             from models.skeletons import build_skeleton
             distil_model = build_skeleton(EasyDict(new_config))
-            
+
             if not self.infer_head_of_distil_model:
                 if hasattr(distil_model, 'head'):
                     import torch.nn as nn
@@ -178,7 +178,7 @@ class PipelineDetection_v1_0():
                     self.dict_cls_id_to_name[v] = k
             self.dict_cls_name_to_bgr = self.cfg.VIS.CLASS_BGR
             self.dict_cls_name_to_rgb = self.cfg.VIS.CLASS_RGB
-    
+
     def show_pline_description(self):
         print('* newtork (description start) -------')
         print(self.network)
@@ -189,7 +189,7 @@ class PipelineDetection_v1_0():
         print(f'* mode = {self.mode}')
         len_data = self.cfg.DATASET.NUM
         print(f'* dataset length = {len_data}')
-    
+
     def set_logging(self, path_cfg, is_print_where=True):
         self.is_logging = True
         str_local_time = get_local_time_str()
@@ -288,29 +288,29 @@ class PipelineDetection_v1_0():
             print(f'* Training epoch = {epoch}/{epoch_end-1}')
             if self.is_logging:
                 print(f'* Logging path = {self.path_log}')
-            
+
             self.network.train()
             self.network.training = True
             avg_loss = []
             for idx_iter, dict_datum in enumerate(tqdm(data_loader_train)):
                 if self.optim_fastai:
                     self.scheduler.step(accumulated_iter, epoch)
-                
+
                 if self.distil:
                     with torch.no_grad():
                         dict_datum = self.distil_model(dict_datum)
                         dict_datum['ldr_bev_feat'] = dict_datum['spatial_features_2d']
-                
+
                 # try:
                 dict_net = self.network(dict_datum)
                 # except:
                 #     print('* error: ', dict_datum['meta'])
-                
+
                 if self.get_loss_from == 'head':
                     loss = self.network.head.loss(dict_net)
                 elif self.get_loss_from == 'detector':
                     loss = self.network.loss(dict_net)
-                
+
                 try:
                     log_avg_loss = loss.cpu().detach().item()
                 except:
@@ -337,7 +337,7 @@ class PipelineDetection_v1_0():
                     self.optimizer.step()
                     if not (self.scheduler is None):
                         self.scheduler.step()
-                
+
                 self.optimizer.zero_grad()
 
                 if self.is_logging:
@@ -374,7 +374,7 @@ class PipelineDetection_v1_0():
                         'epoch': epoch,
                         'model_state_dict': self.network.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
-                        'idx_log_iter': idx_log_iter, 
+                        'idx_log_iter': idx_log_iter,
                     }
                     if self.optim_fastai:
                         dict_util.update({'it': accumulated_iter})
@@ -405,7 +405,7 @@ class PipelineDetection_v1_0():
         * vis_mode (TBD)
         '''
         self.network.eval()
-        
+
         if is_train:
             dataset_loaded = self.dataset_train
         else:
@@ -415,7 +415,7 @@ class PipelineDetection_v1_0():
                 batch_size = 1, shuffle = False,
                 collate_fn = self.dataset_test.collate_fn,
                 num_workers = self.cfg.OPTIMIZER.NUM_WORKERS)
-        
+
         for dict_datum in data_loader:
             dict_out = self.network(dict_datum)
             dict_out = self.network.list_modules[-1].get_nms_pred_boxes_for_single_sample(dict_out, conf_thr, is_nms)
@@ -464,7 +464,7 @@ class PipelineDetection_v1_0():
                 line_set.lines = o3d.utility.Vector2iVector(lines)
                 line_set.colors = o3d.utility.Vector3dVector(colors_label)
                 list_line_set_label.append(line_set)
-            
+
             for idx_pred, pred_obj in enumerate(list_obj_pred):
                 line_set = o3d.geometry.LineSet()
                 line_set.points = o3d.utility.Vector3dVector(pred_obj.corners)
@@ -473,7 +473,7 @@ class PipelineDetection_v1_0():
                 colors_pred = [[1.,0.,0.] for _ in range(len(lines))]
                 line_set.colors = o3d.utility.Vector3dVector(colors_pred)
                 list_line_set_pred.append(line_set)
-            
+
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(pc_lidar[:, :3])
             o3d.visualization.draw_geometries([pcd] + list_line_set_label + list_line_set_pred)
@@ -500,7 +500,7 @@ class PipelineDetection_v1_0():
             self.dict_cls_id_to_name = dict()
             for idx_cls, cls_name in enumerate(class_names):
                 self.dict_cls_id_to_name[(idx_cls+1)] = cls_name # 1 for Background
-        
+
 
         ### Check is_validate with small dataset ###
         if is_subset:
@@ -515,7 +515,7 @@ class PipelineDetection_v1_0():
         data_loader = torch.utils.data.DataLoader(self.dataset_test, \
                 batch_size=1, shuffle=is_shuffle, collate_fn=self.dataset_test.collate_fn, \
                 num_workers = self.cfg.OPTIMIZER.NUM_WORKERS)
-        
+
         if epoch is None:
             dir_epoch = 'none'
         else:
@@ -533,7 +533,7 @@ class PipelineDetection_v1_0():
         for idx_datum, dict_datum in enumerate(data_loader):
             if is_subset & (idx_datum >= self.val_num_subset):
                 break
-            
+
             try:
                 dict_out = self.network(dict_datum) # inference
                 is_feature_inferenced = True
@@ -566,7 +566,7 @@ class PipelineDetection_v1_0():
                         for idx_pred in range(len(pred_labels)):
                             x, y, z, l, w, h, th = pred_boxes[idx_pred]
                             score = pred_scores[idx_pred]
-                            
+
                             if score > conf_thr:
                                 cls_idx = int(np.round(pred_labels[idx_pred]))
                                 cls_name = class_names[cls_idx-1]
@@ -585,7 +585,7 @@ class PipelineDetection_v1_0():
                     else:
                         dict_out_current = self.network.list_modules[-1].get_nms_pred_boxes_for_single_sample(dict_out, conf_thr, is_nms=True)
                 else:
-                    dict_out_current = update_dict_feat_not_inferenced(dict_out) # mostly sleet for lpc (e.g. no measurement)                
+                    dict_out_current = update_dict_feat_not_inferenced(dict_out) # mostly sleet for lpc (e.g. no measurement)
                 if dict_out is None:
                     print('* Exception error (Pipeline): dict_item is None in validation')
                     continue
@@ -617,7 +617,7 @@ class PipelineDetection_v1_0():
                     str_log = idx_name + '\n'
                     with open(split_path, 'a') as f:
                         f.write(str_log)
-            
+
             # free memory (Killed error, checked with htop)
             if 'pointer' in dict_datum.keys():
                 for dict_item in dict_datum['pointer']:
@@ -686,7 +686,7 @@ class PipelineDetection_v1_0():
             self.dict_cls_id_to_name = dict()
             for idx_cls, cls_name in enumerate(class_names):
                 self.dict_cls_id_to_name[(idx_cls+1)] = cls_name # 1 for Background
-        
+
         road_cond_list = ['urban', 'highway', 'countryside', 'alleyway', 'parkinglots', 'shoulder', 'mountain', 'university']
         time_cond_list = ['day', 'night']
         weather_cond_list = ['normal', 'overcast', 'fog', 'rain', 'sleet', 'lightsnow', 'heavysnow']
@@ -702,7 +702,7 @@ class PipelineDetection_v1_0():
         data_loader = torch.utils.data.DataLoader(self.dataset_test, \
                 batch_size = 1, shuffle = is_shuffle, collate_fn = self.dataset_test.collate_fn, \
                 num_workers = self.cfg.OPTIMIZER.NUM_WORKERS)
-        
+
         if epoch is None:
             dir_epoch = 'none'
         else:
@@ -751,7 +751,7 @@ class PipelineDetection_v1_0():
             label_dir_list.append(labels_dir)
             desc_dir_list.append(desc_dir)
             split_path_list.append(split_path)
-                            
+
             ### For Specific Conditions ###
             for road_cond in road_cond_list:
                 preds_dir = os.path.join(path_dir, f'{conf_thr}', road_cond, 'preds')
@@ -759,22 +759,7 @@ class PipelineDetection_v1_0():
                 desc_dir = os.path.join(path_dir, f'{conf_thr}', road_cond, 'desc')
                 list_dir = [preds_dir, labels_dir, desc_dir]
                 split_path = path_dir + f'/{conf_thr}/' + road_cond +'/val.txt'
-                
-                for temp_dir in list_dir:
-                    os.makedirs(temp_dir, exist_ok=True)
-                
-                pred_dir_list.append(preds_dir)
-                label_dir_list.append(labels_dir)
-                desc_dir_list.append(desc_dir)
-                split_path_list.append(split_path)
-            
-            for time_cond in time_cond_list:
-                preds_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'preds')
-                labels_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'gts')
-                desc_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'desc')
-                list_dir = [preds_dir, labels_dir, desc_dir]
-                split_path = path_dir + f'/{conf_thr}/' + time_cond +'/val.txt'
-                
+
                 for temp_dir in list_dir:
                     os.makedirs(temp_dir, exist_ok=True)
 
@@ -782,14 +767,29 @@ class PipelineDetection_v1_0():
                 label_dir_list.append(labels_dir)
                 desc_dir_list.append(desc_dir)
                 split_path_list.append(split_path)
-            
+
+            for time_cond in time_cond_list:
+                preds_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'preds')
+                labels_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'gts')
+                desc_dir = os.path.join(path_dir, f'{conf_thr}', time_cond, 'desc')
+                list_dir = [preds_dir, labels_dir, desc_dir]
+                split_path = path_dir + f'/{conf_thr}/' + time_cond +'/val.txt'
+
+                for temp_dir in list_dir:
+                    os.makedirs(temp_dir, exist_ok=True)
+
+                pred_dir_list.append(preds_dir)
+                label_dir_list.append(labels_dir)
+                desc_dir_list.append(desc_dir)
+                split_path_list.append(split_path)
+
             for weather_cond in weather_cond_list:
                 preds_dir = os.path.join(path_dir, f'{conf_thr}', weather_cond, 'preds')
                 labels_dir = os.path.join(path_dir, f'{conf_thr}', weather_cond, 'gts')
                 desc_dir = os.path.join(path_dir, f'{conf_thr}', weather_cond, 'desc')
                 list_dir = [preds_dir, labels_dir, desc_dir]
                 split_path = path_dir + f'/{conf_thr}/' + weather_cond +'/val.txt'
-                
+
                 for temp_dir in list_dir:
                     os.makedirs(temp_dir, exist_ok=True)
 
@@ -813,9 +813,9 @@ class PipelineDetection_v1_0():
 
             if is_print_memory:
                 print('max_memory: ', torch.cuda.max_memory_allocated(device='cuda'))
-                
+
             idx_name = str(idx_datum).zfill(6)
-            
+
             road_cond_tag, time_cond_tag, weather_cond_tag = \
                 dict_out['meta'][0]['desc']['road_type'], dict_out['meta'][0]['desc']['capture_time'], dict_out['meta'][0]['desc']['climate']
             # print(dict_out['desc'][0])
@@ -853,7 +853,7 @@ class PipelineDetection_v1_0():
                 os.makedirs(preds_dir_road, exist_ok=True)
                 os.makedirs(preds_dir_time, exist_ok=True)
                 os.makedirs(preds_dir_weather, exist_ok=True)
-                
+
                 if is_feature_inferenced:
                     if eval_ver2:
                         pred_dicts = dict_out['pred_dicts'][0]
@@ -866,7 +866,7 @@ class PipelineDetection_v1_0():
                         for idx_pred in range(len(pred_labels)):
                             x, y, z, l, w, h, th = pred_boxes[idx_pred]
                             score = pred_scores[idx_pred]
-                            
+
                             if score > conf_thr:
                                 cls_idx = int(np.round(pred_labels[idx_pred]))
                                 cls_name = class_names[cls_idx-1]
@@ -947,7 +947,7 @@ class PipelineDetection_v1_0():
                                 f.write(pred+'\n')
                             with open(preds_dir_weather + '/' + idx_name + '.txt', mode) as f:
                                 f.write(pred+'\n')
-                    
+
                     str_log = idx_name + '\n'
                     with open(split_path, 'a') as f:
                         f.write(str_log)
@@ -957,7 +957,7 @@ class PipelineDetection_v1_0():
                         f.write(str_log)
                     with open(split_path_weather, 'a') as f:
                         f.write(str_log)
-                        
+
             # free memory (Killed error, checked with htop)
             if 'pointer' in dict_datum.keys():
                 for dict_item in dict_datum['pointer']:
@@ -968,6 +968,12 @@ class PipelineDetection_v1_0():
                 dict_datum[temp_key] = None
             tqdm_bar.update(1)
         tqdm_bar.close()
+
+        # Free GPU/CPU memory before heavy KITTI evaluation
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        print('* GPU memory freed before KITTI evaluation')
 
         ### Validate per conf ###
         all_condition_list = ['all'] + road_cond_list + time_cond_list + weather_cond_list
@@ -1002,7 +1008,7 @@ class PipelineDetection_v1_0():
                             print('BEV: ', dic_metric['bev'])
                             print('3D: ', dic_metric['3d'])
                             print('-'*50)
-                            
+
                             f.write('Conf thr: ' + str(conf_thr) +  ', Condition: ' + condition + '\n')
                             f.write('cls: ' + dic_metric['cls'] + '\n')
                             f.write('iou: ')

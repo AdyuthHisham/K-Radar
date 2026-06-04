@@ -5,10 +5,19 @@ import numba
 import numpy as np
 from scipy.interpolate import interp1d
 
-try:
-    from nms_gpu import rotate_iou_gpu_eval
-except:
-    from utils.kitti_eval.nms_gpu import rotate_iou_gpu_eval
+
+
+_rotate_iou_gpu_eval = None
+
+def rotate_iou_gpu_eval(*args, **kwargs):
+    global _rotate_iou_gpu_eval
+    if _rotate_iou_gpu_eval is None:
+        try:
+            from nms_gpu import rotate_iou_gpu_eval as _fn
+        except ImportError:
+            from utils.kitti_eval.nms_gpu import rotate_iou_gpu_eval as _fn
+        _rotate_iou_gpu_eval = _fn
+    return _rotate_iou_gpu_eval(*args, **kwargs)
 
 ## Line 492: num_parts (similar to batch_size) should be small : default 10
 
@@ -368,7 +377,7 @@ def fused_compute_statistics(overlaps,
 def calculate_iou_partly(gt_annos,
                          dt_annos,
                          metric,
-                         num_parts=10, #this  one 50 --> 10
+                         num_parts=200, #this  one 50 --> 10
                          z_axis=1,
                          z_center=1.0):
     """fast iou algorithm. this function can be used independently to

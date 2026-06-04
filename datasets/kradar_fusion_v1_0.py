@@ -260,9 +260,23 @@ class KRadarFusion_v1_0(Dataset):
         get_split(path_data.split[0], list_dict_split, 'train')
         get_split(path_data.split[1], list_dict_split, 'test')
         
+#        list_seqs_w_header = []
+#        for path_header in path_data.list_dir_kradar:
+#            list_seqs = os.listdir(path_header)
+#            if self.portion is None:
+#                list_seqs_w_header.extend([(seq, path_header) for seq in list_seqs])
+#            else:
+#                for seq in list_seqs:
+#                    if seq in self.portion:
+#                        list_seqs_w_header.append((seq, path_header))
+#        list_seqs_w_header = sorted(list_seqs_w_header, key=lambda x: int(x[0]))
+
         list_seqs_w_header = []
         for path_header in path_data.list_dir_kradar:
             list_seqs = os.listdir(path_header)
+            # Filter: only directories, and only numeric names (sequence folders)
+            list_seqs = [seq for seq in list_seqs 
+                         if os.path.isdir(os.path.join(path_header, seq)) and seq.isdigit()]
             if self.portion is None:
                 list_seqs_w_header.extend([(seq, path_header) for seq in list_seqs])
             else:
