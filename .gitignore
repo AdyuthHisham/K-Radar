@@ -1,0 +1,8 @@
+# Generated/cache files
+datasets/__pycache__/
+
+# Local datasets and generated data
+data/
+preprocessed/
+pretrained/
+revise_label/
