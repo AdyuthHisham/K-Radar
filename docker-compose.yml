@@ -1,0 +1,65 @@
+services:
+  kradar:
+    image: kradar:latest
+    entrypoint: ["/opt/K-Radar/docker-entrypoint.sh"]
+    stdin_open: true
+    tty: true
+    environment:
+      LD_LIBRARY_PATH: /usr/local/cuda-11.3/lib64:/opt/conda/lib
+    volumes:
+      - /home/adhish/Productivity/AMSCUP/repos/K-Radar:/opt/K-Radar
+      - /home/adhish/Downloads/logs_FUSION_AVAIL:/opt/K-Radar/logs
+    working_dir: /opt/K-Radar
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  marimo:
+   image: kradar:latest
+   command: >
+     bash -c "
+       apt-get update &&
+       apt-get install -y curl &&
+       curl -LsSf https://astral.sh/uv/install.sh | sh &&
+       export PATH=\"$$HOME/.local/bin:$$PATH\" &&
+
+       # Remove broken copied venv if it exists
+       rm -rf /workspace/test-bed/.venv &&
+
+       # Install CUDA 12.6 PyTorch directly to system Python
+       uv pip install torch torchvision torchaudio --system --index-url https://download.pytorch.org/whl/cu126 &&
+
+       # Install project dependencies from pyproject.toml if present
+       if [ -f /workspace/test-bed/pyproject.toml ]; then
+         uv pip install -e /workspace/test-bed --system;
+       fi &&
+
+       # Install build tools and OpenPCDet without build isolation
+       uv pip install setuptools wheel packaging --system &&
+       uv pip install -e /workspace/repos/tools/OpenPCDet --system --no-build-isolation &&
+
+       # Install marimo
+       uv pip install marimo --system &&
+
+       # Run marimo
+       marimo edit /workspace/test-bed/src/Modules/robust_testing --host 0.0.0.0 --port 2718 --no-token
+     "
+   ports:
+     - "2718:2718"
+   environment:
+     UV_LINK_MODE: copy
+   volumes:
+     - /home/adhish/Productivity/AMSCUP:/workspace
+   working_dir: /workspace
+   stdin_open: true
+   tty: true
+   deploy:
+     resources:
+       reservations:
+         devices:
+           - driver: nvidia
+             count: all
+             capabilities: [gpu]

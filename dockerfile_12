@@ -1,0 +1,73 @@
+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04
+
+LABEL author="Adyuth" \
+      version="kradar-cuda12.6-py311-torch2.4" \
+      description="K-Radar env: CUDA 12.6 + PyTorch 2.4.0+cu126 + Python 3.11 (Miniconda)"
+
+# ── Environment ──────────────────────────────────────────────────────────────
+ENV DEBIAN_FRONTEND=noninteractive \
+    CONDA_DIR=/opt/conda \
+    PATH=/opt/conda/bin:$PATH \
+    KRADAR_ROOT=/opt/K-Radar \
+    PYTHONUNBUFFERED=1 \
+    # Tell Numba to use NVIDIA's cuda-python bindings instead of ctypes
+    # This is the key fix: avoids the ctypes ABI segfault on driver 580/595
+    NUMBA_CUDA_USE_NVIDIA_BINDING=1
+
+# ── System dependencies ───────────────────────────────────────────────────────
+# Merged into one layer; libgl1 replaces libgl1-mesa-glx on Ubuntu 22.04
+RUN apt-get update && apt-get install -yq \
+    wget unzip build-essential g++ gcc \
+    libgl1 libglib2.0-0 \
+    openmpi-bin openmpi-common libopenmpi-dev \
+    libgtk2.0-dev git \
+    sshfs fuse3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Miniconda (Python 3.11) ───────────────────────────────────────────────────
+RUN cd /tmp && \
+    wget --quiet \
+      https://repo.anaconda.com/miniconda/Miniconda3-py311_24.1.2-0-Linux-x86_64.sh \
+      -O miniconda.sh && \
+    bash miniconda.sh -b -p $CONDA_DIR && \
+    rm miniconda.sh && \
+    conda clean -afy
+
+# ── PyTorch 2.4.0 + CUDA 12.6 ────────────────────────────────────────────────
+# Install via pip: conda channel no longer receives PyTorch updates (deprecated)
+RUN pip install --no-cache-dir \
+    torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+    --index-url https://download.pytorch.org/whl/cu126
+
+# ── Numba + CUDA Python bindings ──────────────────────────────────────────────
+# numba 0.59+ supports CUDA 12; cuda-python provides the NVIDIA bindings
+# that avoid the ctypes ABI segfault seen with numba 0.53 on driver 580/595
+RUN pip install --no-cache-dir \
+    "numba==0.59.1" \
+    "cuda-python>=12.6,<13.0"
+
+# ── spconv (sparse convolution) ───────────────────────────────────────────────
+# spconv-cu120 is the highest prebuilt wheel; works on CUDA 12.x via
+# minor version compatibility (explicitly documented by spconv maintainer)
+RUN pip install --no-cache-dir spconv-cu120
+
+# ── Remaining Python dependencies ─────────────────────────────────────────────
+RUN pip install --no-cache-dir \
+    open3d==0.18.0 \
+    easydict \
+    tensorboard \
+    opencv-python==4.9.0.80 \
+    setuptools==69.5.1 \
+    PyQt5 \
+    scikit-image \
+    einops \
+    SharedArray \
+    tqdm \
+    scipy \
+    nms
+
+# ── App directory ─────────────────────────────────────────────────────────────
+RUN mkdir -p /opt/K-Radar
+WORKDIR /opt/K-Radar
+
+CMD ["/bin/bash"]
