@@ -1,5 +1,12 @@
 """
-Standalone unit tests for the noise-injection module.
+Standalone unit tests for the noise-injection module (Rev 2 taxonomy).
+
+Tests all 12 effects:
+  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete
+  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete
+  Camera:    frame_deletion, gaussian_noise,        loss_partial, loss_complete
+
+Plus injector integration tests and legacy-import compatibility check.
 Runs on synthetic dummy data — no K-Radar pipeline dependency.
 
 Imports directly from the effects directory (not through the root datasets/
@@ -9,8 +16,6 @@ package) to avoid pulling in open3d-dependent K-Radar modules.
 import sys
 import os
 _TESTDIR = os.path.dirname(os.path.abspath(__file__))
-# Insert effects dir into path so we can do `import config, noise_injection`
-# without triggering datasets/__init__.py
 sys.path.insert(0, _TESTDIR)
 
 import math
@@ -22,28 +27,35 @@ import noise_injection as _noise_mod
 
 EffectConfig = _config_mod.EffectConfig
 Effect       = _config_mod.Effect
-NoiseInjector          = _noise_mod.NoiseInjector
-power_gaussian_noise   = _noise_mod.power_gaussian_noise
-sparse_point_dropout   = _noise_mod.sparse_point_dropout
-range_attenuation      = _noise_mod.range_attenuation
-doppler_corruption     = _noise_mod.doppler_corruption
-ghost_points           = _noise_mod.ghost_points
-azimuth_jitter         = _noise_mod.azimuth_jitter
-power_saturation       = _noise_mod.power_saturation
-lidar_random_dropout   = _noise_mod.lidar_random_dropout
-lidar_fov_occlusion    = _noise_mod.lidar_fov_occlusion
-lidar_position_noise   = _noise_mod.lidar_position_noise
-lidar_range_dropout    = _noise_mod.lidar_range_dropout
-lidar_downsampling     = _noise_mod.lidar_downsampling
-camera_gaussian_noise  = _noise_mod.camera_gaussian_noise
-camera_motion_blur     = _noise_mod.camera_motion_blur
-camera_brightness      = _noise_mod.camera_brightness
-camera_patch_occlusion = _noise_mod.camera_patch_occlusion
-camera_jpeg_compression = _noise_mod.camera_jpeg_compression
-camera_gamma_distortion = _noise_mod.camera_gamma_distortion
-DEFAULT_ORDER_RADAR   = _noise_mod.DEFAULT_ORDER_RADAR
-DEFAULT_ORDER_LIDAR   = _noise_mod.DEFAULT_ORDER_LIDAR
-DEFAULT_ORDER_CAMERA  = _noise_mod.DEFAULT_ORDER_CAMERA
+NoiseInjector = _noise_mod.NoiseInjector
+
+# New taxonomy (Rev 2) imports
+radar_frame_deletion       = _noise_mod.radar_frame_deletion
+radar_noise_induced_shifts = _noise_mod.radar_noise_induced_shifts
+radar_loss_partial         = _noise_mod.radar_loss_partial
+radar_loss_complete        = _noise_mod.radar_loss_complete
+lidar_frame_deletion       = _noise_mod.lidar_frame_deletion
+lidar_gaussian_noise       = _noise_mod.lidar_gaussian_noise
+lidar_loss_partial         = _noise_mod.lidar_loss_partial
+lidar_loss_complete        = _noise_mod.lidar_loss_complete
+camera_frame_deletion      = _noise_mod.camera_frame_deletion
+camera_gaussian_noise      = _noise_mod.camera_gaussian_noise
+camera_loss_partial        = _noise_mod.camera_loss_partial
+camera_loss_complete       = _noise_mod.camera_loss_complete
+
+# Registry imports
+RADAR_EFFECTS   = _noise_mod.RADAR_EFFECTS
+LIDAR_EFFECTS   = _noise_mod.LIDAR_EFFECTS
+CAMERA_EFFECTS  = _noise_mod.CAMERA_EFFECTS
+ALL_EFFECTS     = _noise_mod.ALL_EFFECTS
+DEFAULT_ORDER_RADAR  = _noise_mod.DEFAULT_ORDER_RADAR
+DEFAULT_ORDER_LIDAR  = _noise_mod.DEFAULT_ORDER_LIDAR
+DEFAULT_ORDER_CAMERA = _noise_mod.DEFAULT_ORDER_CAMERA
+
+# Legacy imports (for compatibility check)
+RADAR_EFFECTS_LEGACY   = _noise_mod.RADAR_EFFECTS_LEGACY
+LIDAR_EFFECTS_LEGACY   = _noise_mod.LIDAR_EFFECTS_LEGACY
+CAMERA_EFFECTS_LEGACY  = _noise_mod.CAMERA_EFFECTS_LEGACY
 
 
 # ══════════════════════════════════════════════
@@ -99,8 +111,12 @@ def _make_camera_img(H=128, W=256):
 
 
 def _make_dict_item(with_rdr_sparse=True, with_rdr_polar=True, with_pc100p=True,
-                     with_ldr64=True, with_camera=True, rdr_cols=5):
-    item = {"meta": {"seq": "1", "idx": {"rdr": 0}}}
+                     with_ldr64=True, with_camera=True, rdr_cols=5,
+                     rdr_frame_idx=0, ldr_frame_idx=0, cam_frame_idx=0):
+    item = {"meta": {
+        "seq": "1",
+        "idx": {"rdr": rdr_frame_idx, "ldr": ldr_frame_idx, "cam": cam_frame_idx},
+    }}
     if with_rdr_sparse:
         item["rdr_sparse"] = _make_rdr_sparse(200, rdr_cols)
     if with_rdr_polar:
@@ -150,464 +166,482 @@ def _print_results():
 
 
 # ══════════════════════════════════════════════
-# RADAR TESTS  (R1–R7)
+# RADAR TESTS
 # ══════════════════════════════════════════════
 
 
-def test_power_gaussian_noise():
-    rng = np.random.default_rng(100)
+def test_radar_frame_deletion_deterministic_interval():
+    """R1: deterministic frame deletion by interval."""
+    rng = np.random.default_rng(200)
+    # Frame 20, interval=10 -> should be deleted
+    d = _make_dict_item(rdr_frame_idx=20)
+    d = radar_frame_deletion(d, {"mode": "deterministic", "interval": 10}, rng)
+    _check("R1 del interval: rdr_sparse is None",
+           d["rdr_sparse"] is None)
+    _check("R1 del interval: rdr_polar_3d is None",
+           d["rdr_polar_3d"] is None)
+    _check("R1 del interval: pc100p is None",
+           d["pc100p"] is None)
 
-    # Basic: std=0.5 on rdr_sparse
+    # Frame 21 -> not deleted
+    d2 = _make_dict_item(rdr_frame_idx=21)
+    d2 = radar_frame_deletion(d2, {"mode": "deterministic", "interval": 10}, rng)
+    _check("R1 del interval: frame 21 not deleted",
+           d2["rdr_sparse"] is not None)
+
+
+def test_radar_frame_deletion_deterministic_index_list():
+    """R1: deterministic frame deletion by index list."""
+    rng = np.random.default_rng(201)
+    d = _make_dict_item(rdr_frame_idx=5)
+    d = radar_frame_deletion(d, {"mode": "deterministic", "index_list": [5, 10, 15]}, rng)
+    _check("R1 del index_list: rdr_sparse is None",
+           d["rdr_sparse"] is None)
+
+    d2 = _make_dict_item(rdr_frame_idx=6)
+    d2 = radar_frame_deletion(d2, {"mode": "deterministic", "index_list": [5, 10, 15]}, rng)
+    _check("R1 del index_list: frame 6 not deleted",
+           d2["rdr_sparse"] is not None)
+
+
+def test_radar_frame_deletion_random():
+    """R1: random frame deletion with p=1.0 -> always deletes."""
+    rng = np.random.default_rng(202)
+    d = _make_dict_item()
+    d = radar_frame_deletion(d, {"mode": "random", "p": 1.0}, rng)
+    _check("R1 del random p=1: rdr_sparse is None",
+           d["rdr_sparse"] is None)
+    _check("R1 del random p=1: rdr_polar_3d is None",
+           d["rdr_polar_3d"] is None)
+    _check("R1 del random p=1: pc100p is None",
+           d["pc100p"] is None)
+
+    # p=0.0 -> never deletes
+    d2 = _make_dict_item()
+    d2 = radar_frame_deletion(d2, {"mode": "random", "p": 0.0}, rng)
+    _check("R1 del random p=0: rdr_sparse not None",
+           d2["rdr_sparse"] is not None)
+
+
+def test_radar_noise_induced_shifts():
+    """R2: noise-induced shifts change point positions (not power)."""
+    rng = np.random.default_rng(203)
+
     d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    old_xyz = d["rdr_sparse"][:, :3].copy()
     old_pw = d["rdr_sparse"][:, 3].copy()
-    d = power_gaussian_noise(d, {"std": 0.5}, rng)
-    diff = d["rdr_sparse"][:, 3] - old_pw
-    _check("R1 rdr_sparse: std within 20% of param",
-           abs(np.std(diff) - 0.5) < 0.15,
-           f"std(diff)={np.std(diff):.4f}")
 
-    # On rdr_polar_3d
-    d2 = _make_dict_item(with_rdr_sparse=False, with_pc100p=False)
-    old_pw2 = d2["rdr_polar_3d"][0].copy()
-    d2 = power_gaussian_noise(d2, {"std": 0.3}, rng)
-    diff2 = d2["rdr_polar_3d"][0] - old_pw2
-    _check("R1 rdr_polar_3d: std within 20% of param",
-           abs(np.std(diff2) - 0.3) < 0.1,
-           f"std(diff2)={np.std(diff2):.4f}")
+    d = radar_noise_induced_shifts(d, {"shift_std": 2.0}, rng)
+    delta = d["rdr_sparse"][:, :3] - old_xyz
 
-    # clip_min
-    d3 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    d3["rdr_sparse"][:, 3] = 0.01  # small values
-    d3 = power_gaussian_noise(d3, {"std": 1.0, "clip_min": -0.5}, rng)
-    _check("R1 clip_min: no values below -0.5",
-           np.all(d3["rdr_sparse"][:, 3] >= -0.5),
-           f"min={d3['rdr_sparse'][:,3].min():.4f}")
+    # Position should have changed
+    mean_disp = np.mean(np.linalg.norm(delta, axis=1))
+    _check("R2 shifts: mean displacement > 0",
+           mean_disp > 0.5,
+           f"mean_disp={mean_disp:.3f}")
 
-    # On pc100p
-    d4 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False)
-    old_pw4 = d4["pc100p"][:, 3].copy()
-    d4 = power_gaussian_noise(d4, {"std": 0.5}, rng)
-    diff4 = d4["pc100p"][:, 3] - old_pw4
-    _check("R1 pc100p: std within 20% of param",
-           abs(np.std(diff4) - 0.5) < 0.15,
-           f"std(diff4)={np.std(diff4):.4f}")
+    # Std of displacement ~2.0
+    std_disp = np.std(delta)
+    _check("R2 shifts: disp std within 40% of shift_std",
+           abs(std_disp - 2.0) < 0.8,
+           f"std_disp={std_disp:.3f}")
+
+    # Power should NOT have changed (this is a coordinate shift, not power noise)
+    _check("R2 shifts: power values unchanged",
+           np.allclose(d["rdr_sparse"][:, 3], old_pw, atol=1e-6),
+           f"max_power_diff={np.max(np.abs(d['rdr_sparse'][:,3] - old_pw)):.2e}")
+
+    # Test with clip_radius
+    d2 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    d2 = radar_noise_induced_shifts(d2, {"shift_std": 10.0, "clip_radius": 3.0}, rng)
+    delta2 = d2["rdr_sparse"][:, :3] - _make_dict_item(
+        with_rdr_polar=False, with_pc100p=False)["rdr_sparse"][:, :3]
+    max_disp = np.max(np.linalg.norm(delta2, axis=1))
+    _check("R2 shifts: clip_radius respected",
+           max_disp <= 3.0 + 1e-6,
+           f"max_disp={max_disp:.3f}")
 
 
-def test_sparse_point_dropout():
-    rng = np.random.default_rng(101)
+def test_radar_loss_partial():
+    """R3: partial loss removes a fraction of points."""
+    rng = np.random.default_rng(204)
 
-    # rate=0.5 → roughly 50% dropped
     d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
     n_orig = len(d["rdr_sparse"])
-    d = sparse_point_dropout(d, {"rate": 0.5}, rng)
+    d = radar_loss_partial(d, {"fraction": 0.5}, rng)
     ratio = len(d["rdr_sparse"]) / n_orig
-    _check("R2 dropout: rate=0.5 -> count within 5% of 0.5",
+    _check("R3 partial: fraction=0.5 -> count within 5% of 0.5",
            0.45 <= ratio <= 0.55,
            f"ratio={ratio:.3f}")
 
-    # rate=0.0 -> no change
+    # fraction=0.0 -> no change
     d2 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
     n2 = len(d2["rdr_sparse"])
-    d2 = sparse_point_dropout(d2, {"rate": 0.0}, rng)
-    _check("R2 dropout: rate=0.0 -> count unchanged",
+    d2 = radar_loss_partial(d2, {"fraction": 0.0}, rng)
+    _check("R3 partial: fraction=0.0 -> count unchanged",
            len(d2["rdr_sparse"]) == n2)
 
-    # rate=1.0 -> empty
+    # fraction=1.0 -> empty array (NOT None — distinct from loss_complete)
     d3 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    d3 = sparse_point_dropout(d3, {"rate": 1.0}, rng)
-    _check("R2 dropout: rate=1.0 -> empty",
-           len(d3["rdr_sparse"]) == 0)
-
-    # pc100p also drops
-    d4 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False)
-    n4 = len(d4["pc100p"])
-    d4 = sparse_point_dropout(d4, {"rate": 0.6}, rng)
-    ratio4 = len(d4["pc100p"]) / n4
-    _check("R2 dropout pc100p: count within 5% of 0.4",
-           0.35 <= ratio4 <= 0.45,
-           f"ratio={ratio4:.3f}")
+    d3 = radar_loss_partial(d3, {"fraction": 1.0}, rng)
+    _check("R3 partial: fraction=1.0 -> empty array, not None",
+           len(d3["rdr_sparse"]) == 0 and d3["rdr_sparse"] is not None)
 
 
-def test_range_attenuation():
-    rng = np.random.default_rng(102)
-
-    d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    # Place points at known ranges
-    d["rdr_sparse"] = np.array([
-        [10, 0, 0, 10.0, 0],   # r=10,  r0=5  -> atten=exp(-0.05*5)=0.779
-        [100, 0, 0, 10.0, 0],  # r=100, r0=5  -> atten=exp(-0.05*95)=0.0086
-        [2, 0, 0, 10.0, 0],    # r=2,   r0=5  -> no atten (r<r0)
-    ], dtype=float)
-
-    d = range_attenuation(d, {"alpha": 0.05, "r0": 5.0}, rng)
-    powers = d["rdr_sparse"][:, 3]
-    _check("R3 attenuation: points below r0 unchanged",
-           abs(powers[2] - 10.0) < 1e-6,
-           f"power={powers[2]:.6f}")
-    _check("R3 attenuation: power decreases with range",
-           powers[0] < 10.0 and powers[1] < powers[0],
-           f"powers={powers}")
+def test_radar_loss_complete():
+    """R4: complete loss sets all radar keys to None."""
+    rng = np.random.default_rng(205)
+    d = _make_dict_item()
+    d = radar_loss_complete(d, {}, rng)
+    _check("R4 complete: rdr_sparse is None",
+           d["rdr_sparse"] is None)
+    _check("R4 complete: rdr_polar_3d is None",
+           d["rdr_polar_3d"] is None)
+    _check("R4 complete: pc100p is None",
+           d["pc100p"] is None)
 
 
-def test_doppler_corruption():
-    rng = np.random.default_rng(103)
+def test_radar_loss_partial_vs_complete_distinction():
+    """Partial (fraction=1.0) produces empty array; complete produces None."""
+    rng = np.random.default_rng(206)
+    d_partial = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    d_complete = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
 
-    # mode='zero' on rdr_polar_3d
-    d = _make_dict_item(with_rdr_sparse=False, with_pc100p=False)
-    d = doppler_corruption(d, {"mode": "zero"}, rng)
-    _check("R4 doppler mode=zero: doppler plane all zeros",
-           np.all(d["rdr_polar_3d"][1] == 0.0))
+    d_partial = radar_loss_partial(d_partial, {"fraction": 1.0}, rng)
+    d_complete = radar_loss_complete(d_complete, {}, rng)
 
-    # mode='gaussian'
-    d2 = _make_dict_item(with_rdr_sparse=False, with_pc100p=False)
-    old_dop = d2["rdr_polar_3d"][1].copy()
-    d2 = doppler_corruption(d2, {"mode": "gaussian", "std": 0.2}, rng)
-    diff = d2["rdr_polar_3d"][1] - old_dop
-    _check("R4 doppler gaussian: std within 20%",
-           abs(np.std(diff) - 0.2) < 0.06,
-           f"std(diff)={np.std(diff):.4f}")
-
-    # mode='mask' on pc100p
-    d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False)
-    d3 = doppler_corruption(d3, {"mode": "mask", "mask_rate": 1.0}, rng)
-    _check("R4 doppler mask_rate=1: all doppler zero",
-           np.all(d3["pc100p"][:, 4] == 0.0))
-
-
-def test_ghost_points():
-    rng = np.random.default_rng(104)
-
-    d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    n_orig = len(d["rdr_sparse"])
-    d = ghost_points(d, {"num": 10, "x_range": (-10, 10), "y_range": (-10, 10),
-                          "z_range": (-2, 2), "power_bounds": (5, 5)}, rng)
-    _check("R5 ghosts: count increased by exactly num",
-           len(d["rdr_sparse"]) == n_orig + 10,
-           f"len={len(d['rdr_sparse'])}, expected {n_orig+10}")
-
-    # Ghost x positions in range
-    ghosts = d["rdr_sparse"][n_orig:]
-    _check("R5 ghosts: x in range",
-           np.all((ghosts[:, 0] >= -10) & (ghosts[:, 0] <= 10)))
-    # Power is sampled from observed distribution (design §1 R5) — just check it's finite
-    _check("R5 ghosts: power values are finite",
-           np.all(np.isfinite(ghosts[:, 3])))
-
-
-def test_azimuth_jitter():
-    rng = np.random.default_rng(105)
-
-    d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    old_pts = d["rdr_sparse"][:, :3].copy()
-    d = azimuth_jitter(d, {"sigma_deg": 5.0}, rng)
-
-    # Compute angular delta per point
-    old_az = np.arctan2(old_pts[:, 1], old_pts[:, 0])
-    new_az = np.arctan2(d["rdr_sparse"][:, 1], d["rdr_sparse"][:, 0])
-    # Use circular difference to handle phase wrapping at ±pi
-    delta_raw = new_az - old_az
-    delta_wrapped = np.arctan2(np.sin(delta_raw), np.cos(delta_raw))  # circular diff
-    delta_deg = np.rad2deg(delta_wrapped)
-    _check("R6 jitter: mean angular delta > 0",
-           np.mean(np.abs(delta_deg)) > 0)
-    # Check circular std ~ sigma_deg (tolerance: ±60% due to finite-sample noise)
-    circular_std = np.std(delta_deg)
-    _check("R6 jitter: circular std within 60% of sigma_deg",
-           abs(circular_std - 5.0) < 3.0,
-           f"circular_std={circular_std:.2f} deg (expected ~5 deg)")
-
-
-def test_power_saturation():
-    rng = np.random.default_rng(106)
-
-    d = _make_dict_item(with_pc100p=False)
-    d = power_saturation(d, {"ceiling": 5.0, "floor": -1.0}, rng)
-    if "rdr_sparse" in d:
-        _check("R7 sat rdr_sparse: all power <= 5.0",
-               np.all(d["rdr_sparse"][:, 3] <= 5.0 + 1e-6))
-        _check("R7 sat rdr_sparse: all power >= -1.0",
-               np.all(d["rdr_sparse"][:, 3] >= -1.0 - 1e-6))
-    if "rdr_polar_3d" in d:
-        _check("R7 sat rdr_polar: all power <= 5.0",
-               np.all(d["rdr_polar_3d"][0] <= 5.0 + 1e-6))
+    _check("R3 vs R4: partial -> array, not None",
+           isinstance(d_partial["rdr_sparse"], np.ndarray) and len(d_partial["rdr_sparse"]) == 0)
+    _check("R3 vs R4: complete -> None",
+           d_complete["rdr_sparse"] is None)
 
 
 # ══════════════════════════════════════════════
-# LIDAR TESTS  (L1–L5)
+# LIDAR TESTS
 # ══════════════════════════════════════════════
 
 
-def test_lidar_random_dropout():
-    rng = np.random.default_rng(107)
+def test_lidar_frame_deletion():
+    """L1: frame deletion sets ldr64 to None."""
+    rng = np.random.default_rng(207)
+
+    # Deterministic: interval
+    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                         with_camera=False, ldr_frame_idx=30)
+    d = lidar_frame_deletion(d, {"mode": "deterministic", "interval": 10}, rng)
+    _check("L1 del interval: ldr64 is None",
+           d["ldr64"] is None)
+
+    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False, ldr_frame_idx=31)
+    d2 = lidar_frame_deletion(d2, {"mode": "deterministic", "interval": 10}, rng)
+    _check("L1 del interval: frame 31 not deleted",
+           d2["ldr64"] is not None)
+
+    # Index list
+    d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False, ldr_frame_idx=3)
+    d3 = lidar_frame_deletion(d3, {"mode": "deterministic", "index_list": [3, 7]}, rng)
+    _check("L1 del index_list: ldr64 is None",
+           d3["ldr64"] is None)
+
+    # Random: p=1.0
+    d4 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False)
+    d4 = lidar_frame_deletion(d4, {"mode": "random", "p": 1.0}, rng)
+    _check("L1 del random p=1: ldr64 is None",
+           d4["ldr64"] is None)
+
+
+def test_lidar_gaussian_noise():
+    """L2: Gaussian noise on LiDAR positions (and optionally intensity)."""
+    rng = np.random.default_rng(208)
 
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_camera=False)
+    old_pc = d["ldr64"][:, :3].copy()
+    old_intensity = d["ldr64"][:, 3].copy()
+
+    d = lidar_gaussian_noise(d, {"sigma_xy": 0.2, "sigma_z": 0.1, "sigma_intensity": 5.0}, rng)
+    delta = d["ldr64"][:, :3] - old_pc
+
+    std_xy = np.std(delta[:, :2])
+    std_z = np.std(delta[:, 2])
+    _check("L2 noise xy: std within 30% of sigma_xy",
+           abs(std_xy - 0.2) < 0.06,
+           f"std_xy={std_xy:.4f}")
+    _check("L2 noise z: std within 30% of sigma_z",
+           abs(std_z - 0.1) < 0.03,
+           f"std_z={std_z:.4f}")
+
+    # Intensity should have changed (sigma_intensity > 0)
+    intensity_delta = d["ldr64"][:, 3] - old_intensity
+    _check("L2 noise: intensity changed with sigma_intensity=5",
+           np.std(intensity_delta) > 1.0,
+           f"std_intensity={np.std(intensity_delta):.3f}")
+
+    # sigma_intensity=0 -> no intensity change
+    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False)
+    old_i2 = d2["ldr64"][:, 3].copy()
+    d2 = lidar_gaussian_noise(d2, {"sigma_xy": 0.1, "sigma_intensity": 0.0}, rng)
+    _check("L2 noise: sigma_intensity=0 -> intensity unchanged",
+           np.allclose(d2["ldr64"][:, 3], old_i2, atol=1e-6))
+
+
+def test_lidar_loss_partial():
+    """L3: partial LiDAR loss removes fraction of points."""
+    rng = np.random.default_rng(209)
+    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                         with_camera=False)
     n_orig = len(d["ldr64"])
-    d = lidar_random_dropout(d, {"rate": 0.25}, rng)
+    d = lidar_loss_partial(d, {"fraction": 0.25}, rng)
     ratio = len(d["ldr64"]) / n_orig
-    _check("L1 dropout: ratio within 5% of 0.75",
+    _check("L3 partial: fraction=0.25 -> count within 5% of 0.75",
            0.70 <= ratio <= 0.80,
            f"ratio={ratio:.3f}")
 
     d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_camera=False)
-    n2 = len(d2["ldr64"])
-    d2 = lidar_random_dropout(d2, {"rate": 0.0}, rng)
-    _check("L1 dropout: rate=0 -> no change",
-           len(d2["ldr64"]) == n2)
+    d2 = lidar_loss_partial(d2, {"fraction": 0.0}, rng)
+    _check("L3 partial: fraction=0 -> no change",
+           len(d2["ldr64"]) == 500)
 
     d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_camera=False)
-    d3 = lidar_random_dropout(d3, {"rate": 1.0}, rng)
-    _check("L1 dropout: rate=1 -> empty",
-           len(d3["ldr64"]) == 0)
+    d3 = lidar_loss_partial(d3, {"fraction": 1.0}, rng)
+    _check("L3 partial: fraction=1 -> empty array, not None",
+           len(d3["ldr64"]) == 0 and d3["ldr64"] is not None)
 
 
-def test_lidar_fov_occlusion():
-    rng = np.random.default_rng(108)
-
-    # Create points with known azimuths across the full circle
-    angles = np.linspace(-np.pi, np.pi, 100)
-    r = 20.0
-    x = r * np.cos(angles)
-    y = r * np.sin(angles)
-    z = np.zeros(100)
-    pc = np.column_stack([x, y, z, np.zeros(100), np.zeros(100)])
-
-    d = {"meta": {}, "ldr64": pc}
-    # Occlude [-30, 30] degrees -> keep points outside that sector
-    d = lidar_fov_occlusion(d, {"min_deg": -30, "max_deg": 30}, rng)
-    kept_az = np.arctan2(d["ldr64"][:, 1], d["ldr64"][:, 0])
-    kept_deg = np.rad2deg(kept_az)
-    # No point should have azimuth in [-30, 30]
-    in_sector = (kept_deg >= -30) & (kept_deg <= 30)
-    _check("L2 FOV: no points inside occluded sector",
-           np.sum(in_sector) == 0,
-           f"{np.sum(in_sector)} points inside [-30,30] deg")
-
-    # invert=True -> keep inside only
-    pc2 = np.column_stack([x, y, z, np.zeros(100), np.zeros(100)])
-    d2 = {"meta": {}, "ldr64": pc2}
-    d2 = lidar_fov_occlusion(d2, {"min_deg": -30, "max_deg": 30, "invert": True}, rng)
-    kept_az2 = np.arctan2(d2["ldr64"][:, 1], d2["ldr64"][:, 0])
-    kept_deg2 = np.rad2deg(kept_az2)
-    _check("L2 FOV invert: all points inside sector",
-           np.all((kept_deg2 >= -30) & (kept_deg2 <= 30)),
-           f"min={kept_deg2.min():.1f} max={kept_deg2.max():.1f}")
-
-
-def test_lidar_position_noise():
-    rng = np.random.default_rng(109)
-
+def test_lidar_loss_complete():
+    """L4: complete LiDAR loss sets ldr64 to None."""
+    rng = np.random.default_rng(210)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_camera=False)
-    old_pc = d["ldr64"][:, :3].copy()
-    d = lidar_position_noise(d, {"sigma_xy": 0.2, "sigma_z": 0.1}, rng)
-    delta = d["ldr64"][:, :3] - old_pc
-    std_xy = np.std(delta[:, :2])
-    std_z = np.std(delta[:, 2])
-    _check("L3 noise xy: std within 30% of sigma_xy",
-           abs(std_xy - 0.2) < 0.06,
-           f"std_xy={std_xy:.4f}")
-    _check("L3 noise z: std within 30% of sigma_z",
-           abs(std_z - 0.1) < 0.03,
-           f"std_z={std_z:.4f}")
+    d = lidar_loss_complete(d, {}, rng)
+    _check("L4 complete: ldr64 is None",
+           d["ldr64"] is None)
 
 
-def test_lidar_range_dropout():
-    rng = np.random.default_rng(110)
+# ══════════════════════════════════════════════
+# CAMERA TESTS
+# ══════════════════════════════════════════════
 
+
+def test_camera_frame_deletion():
+    """C1: camera frame deletion zeros images."""
+    rng = np.random.default_rng(211)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                         with_camera=False)
-    d = lidar_range_dropout(d, {"r_min": 5.0, "r_max": 50.0}, rng)
-    if len(d["ldr64"]) > 0:
-        r = np.linalg.norm(d["ldr64"][:, :3], axis=1)
-        _check("L4 range: all points within [5, 50]",
-               np.all((r >= 4.99) & (r <= 50.01)),
-               f"r_range=[{r.min():.2f}, {r.max():.2f}]")
-    else:
-        _check("L4 range: no points left (all filtered)", True)
+                         with_ldr64=False, cam_frame_idx=40)
+    d = camera_frame_deletion(d, {"mode": "deterministic", "interval": 10}, rng)
+    # Black pixel in normalized space ≈ -mean/std ≈ -2.1
+    _check("C1 del interval: front0 all near-black",
+           torch.all(d["front0"] < -1.5).item(),
+           f"min={d['front0'].min().item():.3f}")
+    _check("C1 del interval: front1 also zeroed",
+           torch.all(d["front1"] < -1.5).item())
 
-
-def test_lidar_downsampling():
-    rng = np.random.default_rng(111)
-
-    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                         with_camera=False)
-    n_orig = len(d["ldr64"])
-    d = lidar_downsampling(d, {"stride": 4}, rng)
-    ratio = len(d["ldr64"]) / n_orig
-    _check("L5 downsample stride=4: ratio within 5% of 0.25",
-           0.20 <= ratio <= 0.30,
-           f"ratio={ratio:.3f}")
-
+    # Frame 41 not deleted
     d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_camera=False)
-    n2 = len(d2["ldr64"])
-    d2 = lidar_downsampling(d2, {"stride": 1}, rng)
-    _check("L5 downsample stride=1: no change",
-           len(d2["ldr64"]) == n2)
+                          with_ldr64=False, cam_frame_idx=41)
+    d2 = camera_frame_deletion(d2, {"mode": "deterministic", "interval": 10}, rng)
+    _check("C1 del interval: frame 41 not all-black",
+           torch.any(d2["front0"] > -1.0).item())
 
-
-# ══════════════════════════════════════════════
-# CAMERA TESTS  (C1–C6)
-# ══════════════════════════════════════════════
+    # Random p=1.0
+    d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_ldr64=False)
+    d3 = camera_frame_deletion(d3, {"mode": "random", "p": 1.0}, rng)
+    _check("C1 del random p=1: front0 all near-black",
+           torch.all(d3["front0"] < -1.5).item())
 
 
 def test_camera_gaussian_noise():
-    rng = np.random.default_rng(112)
-
-    # sigma=0 -> no change
+    """C2: Gaussian noise on camera images."""
+    rng = np.random.default_rng(212)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
     old = d["front0"].clone()
     d = camera_gaussian_noise(d, {"sigma": 0.0}, rng)
-    _check("C1 noise sigma=0: no change",
-           torch.allclose(d["front0"], old, atol=1e-7),
-           f"max_diff={torch.max(torch.abs(d['front0'] - old)):.2e}")
+    _check("C2 noise sigma=0: unchanged",
+           torch.allclose(d["front0"], old, atol=1e-7))
 
-    # sigma=25 -> noticeable noise
     d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_ldr64=False)
     d2 = camera_gaussian_noise(d2, {"sigma": 25.0}, rng)
     diff = d2["front0"] - _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False,
                                            with_pc100p=False, with_ldr64=False)["front0"]
-    _check("C1 noise sigma=25: std > 0",
+    _check("C2 noise sigma=25: std > 0",
            torch.std(diff).item() > 0,
            f"std={torch.std(diff).item():.4f}")
 
-    # Both camera keys processed
-    _check("C1 noise: both cameras processed",
+    _check("C2 noise: both cameras processed",
            "front1" in d2 and d2["front0"].shape == d2["front1"].shape)
 
 
-def test_camera_motion_blur():
-    rng = np.random.default_rng(113)
-
+def test_camera_loss_partial():
+    """C3: partial camera loss zeros a contiguous region."""
+    rng = np.random.default_rng(213)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
+    H, W = 128, 256
+    d["front0"] = _make_camera_img(H, W)
+
+    # fraction=0.0 -> no change
     old = d["front0"].clone()
-    d = camera_motion_blur(d, {"kernel_size": 9, "angle_deg": 0, "intensity": 1.0}, rng)
-    # Blurring changes the image
-    diff = torch.abs(d["front0"] - old)
-    _check("C2 blur: image changed",
-           torch.mean(diff).item() > 0.001,
-           f"mean_diff={torch.mean(diff).item():.6f}")
+    d2 = camera_loss_partial(d, {"fraction": 0.0}, rng)
+    _check("C3 partial fraction=0: near-unchanged (round-trip tolerance)",
+           torch.allclose(d2["front0"], old, atol=0.02))
 
-    # Kernel size forced to odd (even input doesn't crash)
-    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    d2 = camera_motion_blur(d2, {"kernel_size": 4, "angle_deg": 45, "intensity": 0.5}, rng)
-    _check("C2 blur: even kernel size handled (no crash)", True)
-
-    # intensity=0 -> no change
+    # fraction=0.3 -> black region present
     d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_ldr64=False)
-    old3 = d3["front0"].clone()
-    d3 = camera_motion_blur(d3, {"kernel_size": 5, "angle_deg": 0, "intensity": 0.0}, rng)
-    _check("C2 blur intensity=0: no change",
-           torch.allclose(d3["front0"], old3, atol=0.5),
-           f"max_diff={torch.max(torch.abs(d3['front0'] - old3)):.2f}")
+    d3["front0"] = _make_camera_img(H, W)
+    d3 = camera_loss_partial(d3, {"fraction": 0.3}, rng)
+    # Black pixels in normalized space are < -1.5
+    _check("C3 partial fraction=0.3: some near-black pixels present",
+           (d3["front0"] < -1.5).any().item(),
+           f"min={d3['front0'].min().item():.3f}")
+
+    # Fraction close to 1.0 (clipped to 0.99)
+    d4 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_ldr64=False)
+    d4["front0"] = _make_camera_img(H, W)
+    d4 = camera_loss_partial(d4, {"fraction": 0.99}, rng)
+    # Most but not all pixels should be black
+    black_frac = (d4["front0"] < -1.5).sum().item() / d4["front0"].numel()
+    _check("C3 partial fraction=0.99: most pixels black",
+           black_frac > 0.5,
+           f"black_frac={black_frac:.3f}")
 
 
-def test_camera_brightness():
-    rng = np.random.default_rng(114)
-
+def test_camera_loss_complete():
+    """C4: complete camera loss sets all pixels to black."""
+    rng = np.random.default_rng(214)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
-    old = d["front0"].clone()
-    d = camera_brightness(d, {"factor": 0.5}, rng)
-    mean_diff = d["front0"].mean().item() - old.mean().item()
-    _check("C3 brightness factor=0.5: mean changed (lower)",
-           mean_diff < 0,
-           f"mean_diff={mean_diff:.4f}")
-
-    # factor=1.0 -> no change
-    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    old2 = d2["front0"].clone()
-    d2 = camera_brightness(d2, {"factor": 1.0}, rng)
-    _check("C3 brightness factor=1.0: unchanged",
-           torch.allclose(d2["front0"], old2, atol=1.0),
-           f"max_diff={torch.max(torch.abs(d2['front0'] - old2)):.2f}")
+    d = camera_loss_complete(d, {}, rng)
+    # All pixels should be near-black (< -1.5 in normalized space)
+    _check("C4 complete: all front0 pixels near-black",
+           torch.all(d["front0"] < -1.5).item(),
+           f"min={d['front0'].min().item():.3f}, max={d['front0'].max().item():.3f}")
+    _check("C4 complete: all front1 pixels near-black",
+           torch.all(d["front1"] < -1.5).item())
 
 
-def test_camera_patch_occlusion():
-    rng = np.random.default_rng(115)
-
-    # fill='black'
+def test_camera_loss_partial_single_region():
+    """C3: partial loss produces exactly one contiguous zeroed region (not N patches)."""
+    rng = np.random.default_rng(215)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
-    d = camera_patch_occlusion(d, {"num_patches": 5, "max_size_h": 0.3, "max_size_w": 0.3,
-                                    "fill": "black"}, rng)
-    # In normalized space, black pixels should be very negative (~ -mean/std ~ -2.1)
-    _check("C4 patch black: min value very low (black patch present)",
-           d["front0"].min().item() < -1.5,
-           f"min={d['front0'].min().item():.3f}")
+    H, W = 128, 256
+    d["front0"] = _make_camera_img(H, W)
+    d = camera_loss_partial(d, {"fraction": 0.2}, rng)
 
-    # fill='white'
-    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    d2 = camera_patch_occlusion(d2, {"num_patches": 2, "fill": "white"}, rng)
-    _check("C4 patch white: max value very high",
-           d2["front0"].max().item() > 1.5,
-           f"max={d2['front0'].max().item():.3f}")
+    # Find black region(s) in uint8 space
+    img_np = d["front0"].cpu().numpy().transpose(1, 2, 0)
+    # De-normalize: find pixels with all channels < 0.01
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_uint8 = np.clip((img_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
+    black_mask = np.all(img_uint8 == 0, axis=2)
 
-    # fill='mean' with 0 patches - just verify shape preserved (round-trip through
-    # _to_nhwc/_from_nhwc introduces small float diffs even with 0 patches)
-    d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    old3 = d3["front0"].clone()
-    d3 = camera_patch_occlusion(d3, {"num_patches": 0, "fill": "mean"}, rng)
-    _check("C4 patch num_patches=0: shape unchanged",
-           d3["front0"].shape == old3.shape)
-    _check("C4 patch num_patches=0: no pixel changed beyond float roundrip",
-           torch.allclose(d3["front0"], old3, atol=0.02),
-           f"max_diff={torch.max(torch.abs(d3['front0'] - old3)):.4f}")
-
-
-def test_camera_jpeg_compression():
-    rng = np.random.default_rng(116)
-
-    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                         with_ldr64=False)
-    old = d["front0"].clone()
-    d = camera_jpeg_compression(d, {"quality": 10}, rng)
-    diff = torch.abs(d["front0"] - old)
-    _check("C5 JPEG quality=10: image changed",
-           torch.mean(diff).item() > 0.001,
-           f"mean_diff={torch.mean(diff).item():.6f}")
-
-    # quality=100 (nearly lossless) produces smaller change
-    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    d2 = camera_jpeg_compression(d2, {"quality": 100}, rng)
-    diff2 = torch.abs(d2["front0"] - old)
-    _check("C5 JPEG quality=100: smaller diff than quality=10",
-           torch.mean(diff2).item() < torch.mean(diff).item())
+    # Count connected components of black regions
+    try:
+        from scipy import ndimage as ndi
+        labeled, n_regions = ndi.label(black_mask)
+        _check("C3 partial: exactly 1 zeroed region",
+               n_regions == 1,
+               f"n_regions={n_regions}")
+    except ImportError:
+        # scipy not installed — skip the connected-components check
+        # Still verify at least one black pixel exists
+        _check("C3 partial: at least one black pixel (scipy N/A)",
+               black_mask.sum() > 0,
+               f"black_pixels={black_mask.sum()}")
 
 
-def test_camera_gamma_distortion():
-    rng = np.random.default_rng(117)
+# ══════════════════════════════════════════════
+# REGISTRY TESTS
+# ══════════════════════════════════════════════
 
-    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                         with_ldr64=False)
-    old = d["front0"].clone()
-    d = camera_gamma_distortion(d, {"gamma": 2.0}, rng)
-    mean_old = old.mean().item()
-    mean_new = d["front0"].mean().item()
-    _check("C6 gamma=2.0: mean changed",
-           abs(mean_new - mean_old) > 0.001,
-           f"old_mean={mean_old:.4f} new_mean={mean_new:.4f}")
 
-    # gamma=1.0 -> no change
-    d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
-                          with_ldr64=False)
-    old2 = d2["front0"].clone()
-    d2 = camera_gamma_distortion(d2, {"gamma": 1.0}, rng)
-    _check("C6 gamma=1.0: no change",
-           torch.allclose(d2["front0"], old2, atol=0.5),
-           f"max_diff={torch.max(torch.abs(d2['front0'] - old2)):.2f}")
+def test_registry_counts():
+    """Each modality registry has exactly 4 effects."""
+    _check("REG: radar has 4 effects",
+           len(RADAR_EFFECTS) == 4,
+           f"got {len(RADAR_EFFECTS)}: {list(RADAR_EFFECTS.keys())}")
+    _check("REG: lidar has 4 effects",
+           len(LIDAR_EFFECTS) == 4,
+           f"got {len(LIDAR_EFFECTS)}: {list(LIDAR_EFFECTS.keys())}")
+    _check("REG: camera has 4 effects",
+           len(CAMERA_EFFECTS) == 4,
+           f"got {len(CAMERA_EFFECTS)}: {list(CAMERA_EFFECTS.keys())}")
+
+
+def test_registry_effect_names():
+    """Registries contain exactly the expected effect names."""
+    expected_radar = {"frame_deletion", "noise_induced_shifts", "loss_partial", "loss_complete"}
+    expected_lidar = {"frame_deletion", "gaussian_noise", "loss_partial", "loss_complete"}
+    expected_camera = {"frame_deletion", "gaussian_noise", "loss_partial", "loss_complete"}
+
+    _check("REG: radar names match",
+           set(RADAR_EFFECTS.keys()) == expected_radar,
+           f"extra={set(RADAR_EFFECTS.keys()) - expected_radar}, "
+           f"missing={expected_radar - set(RADAR_EFFECTS.keys())}")
+    _check("REG: lidar names match",
+           set(LIDAR_EFFECTS.keys()) == expected_lidar)
+    _check("REG: camera names match",
+           set(CAMERA_EFFECTS.keys()) == expected_camera)
+
+
+def test_default_ordering():
+    """Default ordering lists reference valid registry names."""
+    for name in DEFAULT_ORDER_RADAR:
+        _check(f"REG default radar: {name} in RADAR_EFFECTS",
+               name in RADAR_EFFECTS)
+    for name in DEFAULT_ORDER_LIDAR:
+        _check(f"REG default lidar: {name} in LIDAR_EFFECTS",
+               name in LIDAR_EFFECTS)
+    for name in DEFAULT_ORDER_CAMERA:
+        _check(f"REG default camera: {name} in CAMERA_EFFECTS",
+               name in CAMERA_EFFECTS)
+
+    # Frame deletion should be first in all defaults
+    _check("REG: frame_deletion first in radar default",
+           DEFAULT_ORDER_RADAR[0] == "frame_deletion")
+    _check("REG: frame_deletion first in lidar default",
+           DEFAULT_ORDER_LIDAR[0] == "frame_deletion")
+    _check("REG: frame_deletion first in camera default",
+           DEFAULT_ORDER_CAMERA[0] == "frame_deletion")
+
+    # Loss complete should be last in all defaults
+    _check("REG: loss_complete last in radar default",
+           DEFAULT_ORDER_RADAR[-1] == "loss_complete")
+    _check("REG: loss_complete last in lidar default",
+           DEFAULT_ORDER_LIDAR[-1] == "loss_complete")
+    _check("REG: loss_complete last in camera default",
+           DEFAULT_ORDER_CAMERA[-1] == "loss_complete")
+
+
+def test_legacy_registries_preserved():
+    """Legacy registries still exist with the old effect names."""
+    _check("REG legacy: radar has 7 effects",
+           len(RADAR_EFFECTS_LEGACY) == 7,
+           f"got {len(RADAR_EFFECTS_LEGACY)}")
+    _check("REG legacy: lidar has 5 effects",
+           len(LIDAR_EFFECTS_LEGACY) == 5)
+    _check("REG legacy: camera has 5 effects (gaussian_noise carried forward, no legacy copy)",
+           len(CAMERA_EFFECTS_LEGACY) == 5)
+
+    # Key legacy names present
+    _check("REG legacy: power_gaussian_noise present",
+           "power_gaussian_noise" in RADAR_EFFECTS_LEGACY)
+    _check("REG legacy: lidar_fov_occlusion present (as fov_occlusion)",
+           "fov_occlusion" in LIDAR_EFFECTS_LEGACY)
+    _check("REG legacy: camera_motion_blur present",
+           "motion_blur" in CAMERA_EFFECTS_LEGACY)
 
 
 # ══════════════════════════════════════════════
@@ -616,11 +650,11 @@ def test_camera_gamma_distortion():
 
 
 def test_injector_basic():
-    """Injector runs end-to-end with one effect per modality."""
+    """Injector runs end-to-end with one new-taxonomy effect per modality."""
     config = EffectConfig(
         seed=42,
-        radar=[Effect("power_gaussian_noise", p=1.0, params={"std": 0.1})],
-        lidar=[Effect("random_dropout", p=1.0, params={"rate": 0.2})],
+        radar=[Effect("noise_induced_shifts", p=1.0, params={"shift_std": 0.5})],
+        lidar=[Effect("loss_partial", p=1.0, params={"fraction": 0.2})],
         camera=[Effect("gaussian_noise", p=1.0, params={"sigma": 5})],
     )
     injector = NoiseInjector(config)
@@ -635,18 +669,40 @@ def test_injector_basic():
     _check("INJ basic: metadata injected",
            "meta" in d and "noise_injection" in d["meta"])
     meta = d["meta"]["noise_injection"]
-    _check("INJ basic: metadata radar listed",
+    _check("INJ basic: radar effect listed in metadata",
            len(meta["radar"]) == 1)
     _check("INJ basic: metadata seed match",
            meta["seed"] == 42)
+
+
+def test_injector_frame_deletion_deterministic():
+    """Frame deletion with deterministic interval via injector."""
+    config = EffectConfig(
+        seed=42,
+        radar=[Effect("frame_deletion", p=1.0,
+                       params={"mode": "deterministic", "interval": 10})],
+    )
+    injector = NoiseInjector(config)
+
+    # Frame 0 -> deleted (0 % 10 == 0)
+    d0 = _make_dict_item(rdr_frame_idx=0)
+    d0 = injector(d0, frame_index=0)
+    _check("INJ frame_del: frame 0 rdr_sparse is None",
+           d0["rdr_sparse"] is None)
+
+    # Frame 5 -> not deleted
+    d5 = _make_dict_item(rdr_frame_idx=5)
+    d5 = injector(d5, frame_index=5)
+    _check("INJ frame_del: frame 5 rdr_sparse not None",
+           d5["rdr_sparse"] is not None)
 
 
 def test_injector_prob_zero():
     """p=0.0 -> no effects applied."""
     config = EffectConfig(
         seed=42,
-        radar=[Effect("power_gaussian_noise", p=0.0, params={"std": 0.1})],
-        lidar=[Effect("random_dropout", p=0.0, params={"rate": 0.2})],
+        radar=[Effect("noise_induced_shifts", p=0.0, params={"shift_std": 0.5})],
+        lidar=[Effect("loss_partial", p=0.0, params={"fraction": 0.2})],
     )
     injector = NoiseInjector(config)
     d = _make_dict_item()
@@ -694,7 +750,7 @@ def test_injector_seed_determinism():
     def run_injector(seed):
         config = EffectConfig(
             seed=seed,
-            radar=[Effect("sparse_point_dropout", p=1.0, params={"rate": 0.5})],
+            radar=[Effect("loss_partial", p=1.0, params={"fraction": 0.5})],
         )
         injector = NoiseInjector(config)
         d = _make_dict_item()
@@ -714,85 +770,137 @@ def test_injector_seed_determinism():
 def test_injector_no_corruption_on_empty_keys():
     """Injector handles missing sensor keys gracefully."""
     config = EffectConfig(
-        radar=[Effect("power_gaussian_noise", p=1.0, params={"std": 0.1})],
-        lidar=[Effect("random_dropout", p=1.0, params={"rate": 0.2})],
+        radar=[Effect("noise_induced_shifts", p=1.0, params={"shift_std": 0.5})],
+        lidar=[Effect("loss_partial", p=1.0, params={"fraction": 0.2})],
     )
     injector = NoiseInjector(config)
-    # dict_item without radar or lidar keys
     d = {"meta": {}}
     d = injector(d)
     _check("INJ missing keys: no crash, metadata present",
            "noise_injection" in d["meta"])
 
 
-def test_injector_rdr_sparse_4col():
-    """rdr_sparse with only 4 columns (no doppler) doesn't crash."""
+def test_injector_should_skip():
+    """should_skip pre-check works for deterministic frame deletion."""
     config = EffectConfig(
+        seed=42,
+        radar=[Effect("frame_deletion", p=1.0,
+                       params={"mode": "deterministic", "interval": 10})],
+    )
+    injector = NoiseInjector(config)
+
+    _check("INJ should_skip: frame 0 -> True",
+           injector.should_skip(0, "radar") is True)
+    _check("INJ should_skip: frame 5 -> False",
+           injector.should_skip(5, "radar") is False)
+    _check("INJ should_skip: frame 10 -> True",
+           injector.should_skip(10, "radar") is True)
+
+    # No frame_deletion for lidar -> always False
+    _check("INJ should_skip: lidar no frame_del -> False",
+           injector.should_skip(0, "lidar") is False)
+
+
+def test_injector_legacy_effect_rejected():
+    """Legacy effect names raise ValueError (not in active registries)."""
+    config = EffectConfig(
+        radar=[Effect("power_gaussian_noise", p=1.0)],
+    )
+    try:
+        NoiseInjector(config)
+        _check("INJ legacy rejected: ValueError raised", False)
+    except ValueError:
+        _check("INJ legacy rejected: ValueError raised", True)
+
+
+def test_injector_frame_deletion_index_list():
+    """Frame deletion via explicit index list."""
+    config = EffectConfig(
+        seed=42,
+        lidar=[Effect("frame_deletion", p=1.0,
+                       params={"mode": "deterministic", "index_list": [3, 7, 15]})],
+    )
+    injector = NoiseInjector(config)
+
+    d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False, ldr_frame_idx=3)
+    d3 = injector(d3, frame_index=3)
+    _check("INJ index_list: frame 3 -> ldr64 is None",
+           d3["ldr64"] is None)
+
+    d5 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                          with_camera=False, ldr_frame_idx=5)
+    d5 = injector(d5, frame_index=5)
+    _check("INJ index_list: frame 5 -> ldr64 not None",
+           d5["ldr64"] is not None)
+
+
+def test_injector_has_key_skips_none():
+    """Effects skip sensor keys set to None by frame_deletion."""
+    config = EffectConfig(
+        seed=42,
         radar=[
-            Effect("power_gaussian_noise", p=1.0, params={"std": 0.1}),
-            Effect("range_attenuation", p=1.0, params={"alpha": 0.01}),
+            Effect("frame_deletion", p=1.0,
+                   params={"mode": "deterministic", "interval": 1}),
+            Effect("noise_induced_shifts", p=1.0, params={"shift_std": 1.0}),
         ],
     )
     injector = NoiseInjector(config)
-    d = _make_dict_item(rdr_cols=4, with_rdr_polar=False, with_pc100p=False,
-                         with_ldr64=False, with_camera=False)
-    d = injector(d)
-    _check("INJ rdr 4-col: rdr_sparse shape[1] = 4",
-           d["rdr_sparse"].shape[1] == 4)
-    _check("INJ rdr 4-col: power values finite",
-           np.all(np.isfinite(d["rdr_sparse"][:, 3])))
-
-
-def test_injector_default_ordering():
-    """Verify default ordering constants produce valid effect lists."""
-    # Check every name in the defaults is in the registry
-    for name in DEFAULT_ORDER_RADAR:
-        _check(f"INJ default radar order: {name} registered", True)
-    for name in DEFAULT_ORDER_LIDAR:
-        _check(f"INJ default lidar order: {name} registered", True)
-    for name in DEFAULT_ORDER_CAMERA:
-        _check(f"INJ default camera order: {name} registered", True)
+    d = _make_dict_item(rdr_frame_idx=0)
+    d = injector(d, frame_index=0)
+    # Frame deletion fired -> rdr_sparse is None -> noise_induced_shifts should
+    # not crash (it will skip via _has_key)
+    _check("INJ has_key skip: rdr_sparse is None (not crash)",
+           d["rdr_sparse"] is None)
+    _check("INJ has_key skip: metadata still populated",
+           "noise_injection" in d["meta"])
 
 
 # ══════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════
 
-
 if __name__ == "__main__":
     # Radar
-    test_power_gaussian_noise()
-    test_sparse_point_dropout()
-    test_range_attenuation()
-    test_doppler_corruption()
-    test_ghost_points()
-    test_azimuth_jitter()
-    test_power_saturation()
+    test_radar_frame_deletion_deterministic_interval()
+    test_radar_frame_deletion_deterministic_index_list()
+    test_radar_frame_deletion_random()
+    test_radar_noise_induced_shifts()
+    test_radar_loss_partial()
+    test_radar_loss_complete()
+    test_radar_loss_partial_vs_complete_distinction()
 
     # LiDAR
-    test_lidar_random_dropout()
-    test_lidar_fov_occlusion()
-    test_lidar_position_noise()
-    test_lidar_range_dropout()
-    test_lidar_downsampling()
+    test_lidar_frame_deletion()
+    test_lidar_gaussian_noise()
+    test_lidar_loss_partial()
+    test_lidar_loss_complete()
 
     # Camera
+    test_camera_frame_deletion()
     test_camera_gaussian_noise()
-    test_camera_motion_blur()
-    test_camera_brightness()
-    test_camera_patch_occlusion()
-    test_camera_jpeg_compression()
-    test_camera_gamma_distortion()
+    test_camera_loss_partial()
+    test_camera_loss_complete()
+    test_camera_loss_partial_single_region()
 
-    # Injector
+    # Registries
+    test_registry_counts()
+    test_registry_effect_names()
+    test_default_ordering()
+    test_legacy_registries_preserved()
+
+    # Injector integration
     test_injector_basic()
+    test_injector_frame_deletion_deterministic()
     test_injector_prob_zero()
     test_injector_empty_config()
     test_injector_unknown_effect()
     test_injector_seed_determinism()
     test_injector_no_corruption_on_empty_keys()
-    test_injector_rdr_sparse_4col()
-    test_injector_default_ordering()
+    test_injector_should_skip()
+    test_injector_legacy_effect_rejected()
+    test_injector_frame_deletion_index_list()
+    test_injector_has_key_skips_none()
 
     success = _print_results()
     sys.exit(0 if success else 1)
