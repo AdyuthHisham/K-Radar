@@ -6,3 +6,5 @@ data/
 preprocessed/
 pretrained/
 revise_label/
+
+*.pyc
