@@ -1,0 +1,7 @@
+# Noise Injection Config — Empty (Task 6)
+# No effects active. Must produce byte-for-byte identical output to clean run.
+---
+seed: 42
+radar: []
+lidar: []
+camera: []

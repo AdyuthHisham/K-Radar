@@ -1,0 +1,51 @@
+# Severity-level parameters — Noise Visual Inspection v3
+seed: 42
+
+radar:
+  loss_partial:
+    low: {'fraction': 0.1}
+    medium: {'fraction': 0.3}
+    high: {'fraction': 0.8}
+
+  frame_deletion:
+    low: {'mode': 'random', 'p': 0.1}
+    medium: {'mode': 'random', 'p': 0.5}
+    high: {'mode': 'random', 'p': 0.9}
+
+  noise_induced_shifts:
+    low: {'shift_std': 0.01, 'distribution': 'gaussian'}
+    medium: {'shift_std': 1.0, 'distribution': 'gaussian'}
+    high: {'shift_std': 5.0, 'distribution': 'gaussian'}
+
+lidar:
+  loss_partial:
+    low: {'fraction': 0.1}
+    medium: {'fraction': 0.3}
+    high: {'fraction': 0.8}
+
+  frame_deletion:
+    low: {'mode': 'random', 'p': 0.1}
+    medium: {'mode': 'random', 'p': 0.5}
+    high: {'mode': 'random', 'p': 0.9}
+
+  gaussian_noise:
+    low: {'sigma_xy': 0.01, 'sigma_z': 0.01}
+    medium: {'sigma_xy': 0.5, 'sigma_z': 0.2}
+    high: {'sigma_xy': 1.0, 'sigma_z': 1.0}
+
+camera:
+  loss_partial:
+    low: {'fraction': 0.1}
+    medium: {'fraction': 0.3}
+    high: {'fraction': 0.8}
+
+  frame_deletion:
+    low: {'mode': 'random', 'p': 0.1}
+    medium: {'mode': 'random', 'p': 0.5}
+    high: {'mode': 'random', 'p': 0.9}
+
+  gaussian_noise:
+    low: {'sigma': 1.0}
+    medium: {'sigma': 40.0}
+    high: {'sigma': 50.0}
+

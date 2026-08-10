@@ -192,8 +192,9 @@ def test_radar_frame_deletion() -> None:
             type(d["rdr_sparse"]).__name__, "NoneType")
     _record("R1-FrameDel", "det-interval: rdr_polar_3d is None", d["rdr_polar_3d"] is None,
             type(d["rdr_polar_3d"]).__name__, "NoneType")
-    _record("R1-FrameDel", "det-interval: pc100p is None", d["pc100p"] is None,
-            type(d["pc100p"]).__name__, "NoneType")
+    _record("R1-FrameDel", "det-interval: pc100p NOT modified (untouched)",
+            d["pc100p"] is not None,
+            type(d["pc100p"]).__name__ if d["pc100p"] is not None else "None", "ndarray")
 
     d2 = make_dict_item(rdr_frame_idx=21)
     d2 = _ni.radar_frame_deletion(d2, {"mode": "deterministic", "interval": 10}, rng)
@@ -250,12 +251,12 @@ def test_radar_frame_deletion() -> None:
 
 
 def test_radar_noise_induced_shifts() -> None:
-    """R2: coordinate shift on rdr_sparse and pc100p, power unchanged."""
+    """R2: coordinate shift on rdr_sparse only, power unchanged. pc100p untouched."""
     rng = np.random.default_rng(43)
     d = make_dict_item(with_rdr_polar=False)
     old_xyz = d["rdr_sparse"][:, :3].copy()
     old_pw = d["rdr_sparse"][:, 3].copy()
-    old_pc100p_xyz = d["pc100p"][:, :3].copy()
+    old_pc100p = d["pc100p"].copy()
 
     d = _ni.radar_noise_induced_shifts(d, {"shift_std": 2.0}, rng)
     delta = d["rdr_sparse"][:, :3] - old_xyz
@@ -272,11 +273,10 @@ def test_radar_noise_induced_shifts() -> None:
     _record("R2-NoiseShift", "rdr_sparse: power unchanged",
             pw_delta_max < 1e-6, f"max_pw_delta={pw_delta_max:.2e}", "< 1e-6")
 
-    # pc100p also shifted
-    pc_delta = d["pc100p"][:, :3] - old_pc100p_xyz
-    pc_mean_disp = float(np.mean(np.linalg.norm(pc_delta, axis=1)))
-    _record("R2-NoiseShift", "pc100p: mean displacement > 0.5 m",
-            pc_mean_disp > 0.5, f"pc_mean_disp={pc_mean_disp:.3f} m", "> 0.5 m")
+    # pc100p is completely untouched (no shift applied)
+    _record("R2-NoiseShift", "pc100p: completely unchanged (not shifted)",
+            np.allclose(d["pc100p"], old_pc100p, atol=1e-6),
+            f"max_diff={float(np.max(np.abs(d['pc100p'] - old_pc100p))):.2e}", "< 1e-6")
 
     # Uniform distribution
     rng2 = np.random.default_rng(44)
@@ -304,24 +304,37 @@ def test_radar_noise_induced_shifts() -> None:
 
 
 def test_radar_loss_partial() -> None:
-    """R3: Bernoulli dropout on rdr_sparse and pc100p."""
+    """R3: zero-out via permutation on rdr_sparse — shape preserved, exact count."""
     rng = np.random.default_rng(46)
 
-    # fraction=0.5
+    # fraction=0.5 -> exactly int(N*0.5) zeroed rows, count unchanged
     d = make_dict_item(with_rdr_polar=False)
     n_orig = len(d["rdr_sparse"])
+    arr_orig = d["rdr_sparse"].copy()
     d = _ni.radar_loss_partial(d, {"fraction": 0.5}, rng)
-    ratio = len(d["rdr_sparse"]) / n_orig
-    _record("R3-LossPartial", "fraction=0.5: kept ratio within [0.45, 0.55]",
-            0.45 <= ratio <= 0.55, f"kept={ratio:.3f}", "[0.45, 0.55]")
+    n_after = len(d["rdr_sparse"])
+    n_zeroed = int(np.sum(np.all(d["rdr_sparse"] == 0, axis=1)))
+    expected_zeroed = int(n_orig * 0.5)
+    _record("R3-LossPartial", "fraction=0.5: row count unchanged",
+            n_after == n_orig,
+            f"n_after={n_after}, n_orig={n_orig}", "unchanged")
+    _record("R3-LossPartial", "fraction=0.5: exact zeroed count",
+            n_zeroed == expected_zeroed,
+            f"zeroed={n_zeroed}, expected={expected_zeroed}", "exact match")
 
-    n_pc_orig = n_orig  # same count as pc100p was built with same n
-    # pc100p check
+    # pc100p check: untouched by loss_partial
     n_pc_after = d["pc100p"].shape[0]
-    pc_ratio = n_pc_after / n_pc_orig
-    _record("R3-LossPartial", "pc100p also dropped",
-            len(d["pc100p"]) < n_pc_orig,
-            f"pc100p: {n_pc_after}/{n_pc_orig} ({pc_ratio:.3f})", "< 200")
+    _record("R3-LossPartial", "pc100p NOT modified (untouched by loss_partial)",
+            n_pc_after == n_orig,
+            f"pc100p: {n_pc_after}/{n_orig}", "unchanged")
+
+    # Non-selected rows untouched
+    zeroed_idx = np.where(np.all(d["rdr_sparse"] == 0, axis=1))[0]
+    kept = np.ones(n_orig, dtype=bool)
+    kept[zeroed_idx] = False
+    _record("R3-LossPartial", "non-selected rows unchanged",
+            bool(np.allclose(d["rdr_sparse"][kept], arr_orig[kept])),
+            "rows match original", "true")
 
     # fraction=0.0 → no change
     d2 = make_dict_item(with_rdr_polar=False)
@@ -330,14 +343,18 @@ def test_radar_loss_partial() -> None:
     _record("R3-LossPartial", "fraction=0.0: count unchanged",
             len(d2["rdr_sparse"]) == n2,
             f"{len(d2['rdr_sparse'])}/{n2}", "= 200")
+    _record("R3-LossPartial", "fraction=0.0: no zeroed rows",
+            bool(np.all(d2["rdr_sparse"] != 0)),
+            "all non-zero", "true")
 
-    # fraction=1.0 → empty array, NOT None (Design Decision #2)
+    # fraction=1.0 → all rows zeroed, NOT None (Design Decision #2)
     d3 = make_dict_item(with_rdr_polar=False)
+    n3 = len(d3["rdr_sparse"])
     d3 = _ni.radar_loss_partial(d3, {"fraction": 1.0}, rng)
-    _record("R3-LossPartial", "fraction=1.0: empty array (not None)",
-            isinstance(d3["rdr_sparse"], np.ndarray) and len(d3["rdr_sparse"]) == 0,
-            f"type={type(d3['rdr_sparse']).__name__}, len={len(d3['rdr_sparse']) if isinstance(d3['rdr_sparse'], np.ndarray) else 'N/A'}",
-            "np.ndarray len 0")
+    _record("R3-LossPartial", "fraction=1.0: all rows zeroed (not None)",
+            isinstance(d3["rdr_sparse"], np.ndarray) and len(d3["rdr_sparse"]) == n3
+            and bool(np.all(d3["rdr_sparse"] == 0)),
+            f"type={type(d3['rdr_sparse']).__name__}, all_zero=yes", "np.ndarray all-zero")
 
 
 def test_radar_loss_complete() -> None:
@@ -349,24 +366,28 @@ def test_radar_loss_complete() -> None:
             d["rdr_sparse"] is None, type(d["rdr_sparse"]).__name__, "NoneType")
     _record("R4-LossComplete", "rdr_polar_3d is None",
             d["rdr_polar_3d"] is None, type(d["rdr_polar_3d"]).__name__, "NoneType")
-    _record("R4-LossComplete", "pc100p is None",
-            d["pc100p"] is None, type(d["pc100p"]).__name__, "NoneType")
+    _record("R4-LossComplete", "pc100p NOT modified (untouched by loss_complete)",
+            d["pc100p"] is not None,
+            type(d["pc100p"]).__name__ if d["pc100p"] is not None else "None", "ndarray")
 
-    # Design Decision #1: loss_complete produces None; loss_partial(f=1.0) produces empty array
+    # Design Decision #1: loss_complete produces None; loss_partial(f=1.0) produces all-zero array
     rng2 = np.random.default_rng(48)
     d_partial = make_dict_item(with_rdr_polar=False)
+    n_partial = len(d_partial["rdr_sparse"])
     d_partial = _ni.radar_loss_partial(d_partial, {"fraction": 1.0}, rng2)
     d_complete = make_dict_item(with_rdr_polar=False)
     d_complete = _ni.radar_loss_complete(d_complete, {}, rng2)
     sig_diff = (
-        isinstance(d_partial["rdr_sparse"], np.ndarray) and len(d_partial["rdr_sparse"]) == 0
+        isinstance(d_partial["rdr_sparse"], np.ndarray)
+        and len(d_partial["rdr_sparse"]) == n_partial
+        and bool(np.all(d_partial["rdr_sparse"] == 0))
         and d_complete["rdr_sparse"] is None
     )
-    _record("R4-LossComplete", "partial(f=1)=array vs complete=None (DD#1)",
+    _record("R4-LossComplete", "partial(f=1)=all-zero-array vs complete=None (DD#1)",
             sig_diff,
-            f"partial: {type(d_partial['rdr_sparse']).__name__} len={len(d_partial['rdr_sparse']) if isinstance(d_partial['rdr_sparse'], np.ndarray) else '?'} | "
+            f"partial: {type(d_partial['rdr_sparse']).__name__} len={len(d_partial['rdr_sparse'])} all_zero=yes | "
             f"complete: {type(d_complete['rdr_sparse']).__name__}",
-            "partial=<ndarray len=0>, complete=None")
+            "partial=<ndarray all-zero>, complete=None")
 
 
 def test_lidar_frame_deletion() -> None:
@@ -445,25 +466,40 @@ def test_lidar_gaussian_noise() -> None:
 
 
 def test_lidar_loss_partial() -> None:
-    """L3: partial LiDAR loss via Bernoulli dropout."""
+    """L3: partial LiDAR loss via zero-out — shape preserved, exact count."""
     rng = np.random.default_rng(51)
 
     d = make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                        with_camera=False)
     n_orig = len(d["ldr64"])
+    arr_orig = d["ldr64"].copy()
     d = _ni.lidar_loss_partial(d, {"fraction": 0.25}, rng)
-    ratio = len(d["ldr64"]) / n_orig
-    _record("L3-LossPartial", "fraction=0.25: kept ratio within [0.70, 0.80]",
-            0.70 <= ratio <= 0.80, f"kept={ratio:.3f}", "[0.70, 0.80]")
+    n_after = len(d["ldr64"])
+    n_zeroed = int(np.sum(np.all(d["ldr64"] == 0, axis=1)))
+    expected_zeroed = int(n_orig * 0.25)
+    _record("L3-LossPartial", "fraction=0.25: row count unchanged",
+            n_after == n_orig,
+            f"n_after={n_after}, n_orig={n_orig}", "unchanged")
+    _record("L3-LossPartial", "fraction=0.25: exact zeroed count",
+            n_zeroed == expected_zeroed,
+            f"zeroed={n_zeroed}, expected={expected_zeroed}", "exact match")
+    # Non-selected rows unchanged
+    zeroed_idx = np.where(np.all(d["ldr64"] == 0, axis=1))[0]
+    kept = np.ones(n_orig, dtype=bool)
+    kept[zeroed_idx] = False
+    _record("L3-LossPartial", "non-selected rows unchanged",
+            bool(np.allclose(d["ldr64"][kept], arr_orig[kept])),
+            "rows match original", "true")
 
-    # fraction=1.0 → empty array, not None (Design Decision #2)
+    # fraction=1.0 → all rows zeroed, not None (Design Decision #2)
     d2 = make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                         with_camera=False)
+    n2 = len(d2["ldr64"])
     d2 = _ni.lidar_loss_partial(d2, {"fraction": 1.0}, rng)
-    _record("L3-LossPartial", "fraction=1.0: empty array (not None)",
-            isinstance(d2["ldr64"], np.ndarray) and len(d2["ldr64"]) == 0,
-            f"type={type(d2['ldr64']).__name__}, len={len(d2['ldr64']) if isinstance(d2['ldr64'], np.ndarray) else 'N/A'}",
-            "np.ndarray len 0")
+    _record("L3-LossPartial", "fraction=1.0: all rows zeroed (not None)",
+            isinstance(d2["ldr64"], np.ndarray) and len(d2["ldr64"]) == n2
+            and bool(np.all(d2["ldr64"] == 0)),
+            f"type={type(d2['ldr64']).__name__}, all_zero=yes", "np.ndarray all-zero")
 
 
 def test_lidar_loss_complete() -> None:
@@ -570,7 +606,7 @@ def test_camera_gaussian_noise() -> None:
 
 
 def test_camera_loss_partial() -> None:
-    """C3: partial camera loss — single contiguous zeroed region."""
+    """C3: partial camera loss via flatten-permute-zero (AI-MSF-Benchmark port)."""
     rng = np.random.default_rng(56)
     H, W = 128, 256
 
@@ -584,23 +620,45 @@ def test_camera_loss_partial() -> None:
             bool(torch.allclose(d2["front0"], old, atol=0.02)),
             "within tolerance", "atol=0.02")
 
-    # fraction=0.3 → some black pixels
+    # fraction=0.3 → exact scalar count zeroed, shape unchanged
     d3 = make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                         with_ldr64=False)
-    d3["front0"] = _make_camera_img(H, W)
+    # Use mid-gray image (no natural zeros) for exact count check
+    H0, W0 = H, W
+    raw = np.full((H0, W0, 3), 100, dtype=np.uint8)
+    img_f = raw.astype(np.float32) / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_f = (img_f - mean) / std
+    d3["front0"] = torch.from_numpy(img_f.transpose(2, 0, 1))
     d3 = _ni.camera_loss_partial(d3, {"fraction": 0.3}, rng)
-    _record("C3-LossPartial", "fraction=0.3: some black pixels present",
-            bool((d3["front0"] < -1.5).any()),
-            f"min={d3['front0'].min().item():.3f}", "< -1.5")
+    _record("C3-LossPartial", "fraction=0.3: shape unchanged",
+            d3["front0"].shape == (3, H, W),
+            f"shape={d3['front0'].shape}", "(3, 128, 256)")
+    # Exact count check in uint8 space
+    img_np = d3["front0"].cpu().numpy().transpose(1, 2, 0)
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_uint8 = np.clip((img_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
+    n_zeroed = int(np.sum(img_uint8 == 0))
+    expected_zeroed = int(H * W * 3 * 0.3)
+    _record("C3-LossPartial", "fraction=0.3: exact scalar count zeroed",
+            n_zeroed == expected_zeroed,
+            f"zeroed={n_zeroed}, expected={expected_zeroed}", "exact match")
 
-    # fraction=0.99 → most pixels black (clipped to 0.99 internally)
+    # fraction=1.0 → all zeroed
     d4 = make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                         with_ldr64=False)
     d4["front0"] = _make_camera_img(H, W)
-    d4 = _ni.camera_loss_partial(d4, {"fraction": 0.99}, rng)
-    black_frac = float((d4["front0"] < -1.5).sum().item() / d4["front0"].numel())
-    _record("C3-LossPartial", "fraction=0.99: most pixels black",
-            black_frac > 0.5, f"black_frac={black_frac:.3f}", "> 0.5")
+    d4 = _ni.camera_loss_partial(d4, {"fraction": 1.0}, rng)
+    img_np4 = d4["front0"].cpu().numpy().transpose(1, 2, 0)
+    img_uint8_4 = np.clip((img_np4 * std + mean) * 255.0, 0, 255).astype(np.uint8)
+    _record("C3-LossPartial", "fraction=1.0: all zeroed",
+            bool(np.all(img_uint8_4 == 0)),
+            f"non_zero={(img_uint8_4 != 0).sum()}", "all zero")
+    _record("C3-LossPartial", "fraction=1.0: tensor not None",
+            d4["front0"] is not None,
+            "not None", "not None")
 
 
 def test_camera_loss_complete() -> None:
@@ -642,9 +700,9 @@ def test_composed_radar_default_order() -> None:
         _ = inj(d)
         survived = len(d["rdr_sparse"])
         _record("COMP-Radar", "composed radar: no crash", True, "OK", "no crash")
-        _record("COMP-Radar", "composed radar: points removed by loss_partial",
-                survived < n_before * 0.9,
-                f"{survived}/{n_before} kept ({survived/n_before:.3f})", "< 90% kept")
+        _record("COMP-Radar", "composed radar: loss_partial zeroed some rows (count preserved)",
+                survived == n_before and np.any(np.all(d["rdr_sparse"] == 0, axis=1)),
+                f"{survived}/{n_before} kept, zeroed={int(np.sum(np.all(d['rdr_sparse'] == 0, axis=1)))}", "count preserved, some zeroed")
         _record("COMP-Radar", "composed radar: no NaNs/infs",
                 bool(np.all(np.isfinite(d["rdr_sparse"][:, :3]))),
                 "all finite", "all finite")
@@ -676,9 +734,9 @@ def test_composed_lidar_default_order() -> None:
         _ = inj(d)
         survived = len(d["ldr64"])
         _record("COMP-LiDAR", "composed lidar: no crash", True, "OK", "no crash")
-        _record("COMP-LiDAR", "composed lidar: points reduced",
-                survived < n_before * 0.9,
-                f"{survived}/{n_before} kept", "< 90%")
+        _record("COMP-LiDAR", "composed lidar: loss_partial zeroed some rows (count preserved)",
+                survived == n_before and np.any(np.all(d["ldr64"] == 0, axis=1)),
+                f"{survived}/{n_before} kept, zeroed={int(np.sum(np.all(d['ldr64'] == 0, axis=1)))}", "count preserved, some zeroed")
         _record("COMP-LiDAR", "composed lidar: no NaNs/infs",
                 bool(np.all(np.isfinite(d["ldr64"][:, :3]))),
                 "all finite", "all finite")
@@ -777,15 +835,17 @@ def test_kitchen_sink() -> None:
                 meta.get("seed") == 200,
                 f"seed={meta.get('seed')}", "200")
 
-        # Check per-sensor count reductions from loss_partial
+        # Check per-sensor zero-out from loss_partial (count preserved)
+        rdr_zeroed = int(np.sum(np.all(d["rdr_sparse"] == 0, axis=1)))
         rdr_kept = len(d["rdr_sparse"]) / 200
-        _record("KITCHEN-SINK", "rdr kept ratio ~0.8 (loss_partial f=0.2)",
-                0.70 <= rdr_kept <= 0.90,
-                f"rdr kept={rdr_kept:.3f}", "~0.80")
+        _record("KITCHEN-SINK", f"rdr count preserved, ~{int(200*0.2)} rows zeroed (loss_partial f=0.2)",
+                rdr_kept == 1.0 and rdr_zeroed == int(200 * 0.2),
+                f"rdr kept={rdr_kept:.3f}, zeroed={rdr_zeroed}", "count=1.0, exact zeroed")
+        ldr_zeroed = int(np.sum(np.all(d["ldr64"] == 0, axis=1)))
         ldr_kept = len(d["ldr64"]) / 500
-        _record("KITCHEN-SINK", "ldr kept ratio ~0.85 (loss_partial f=0.15)",
-                0.75 <= ldr_kept <= 0.95,
-                f"ldr kept={ldr_kept:.3f}", "~0.85")
+        _record("KITCHEN-SINK", f"ldr count preserved, ~{int(500*0.15)} rows zeroed (loss_partial f=0.15)",
+                ldr_kept == 1.0 and ldr_zeroed == int(500 * 0.15),
+                f"ldr kept={ldr_kept:.3f}, zeroed={ldr_zeroed}", "count=1.0, exact zeroed")
 
     except Exception as e:
         _record("KITCHEN-SINK", "all 12 effects: no crash", False,
@@ -978,7 +1038,7 @@ def _write_report() -> str:
     lines.append("## Verification notes")
     lines.append("")
     lines.append("- **Design Decision #1** (loss_complete vs loss_partial at f=1.0): Verified via signal-level comparison in R4, L4.")
-    lines.append("- **Design Decision #2** (frame_deletion per-sensor-only): Verified — radar clears `rdr_sparse+rdr_polar_3d+pc100p`; lidar clears `ldr64`; camera zeros tensor keys.")
+    lines.append("- **Design Decision #2** (frame_deletion per-sensor-only): Verified — radar clears `rdr_sparse+rdr_polar_3d` only; `pc100p` is left completely untouched (verified via before/after numeric equality). lidar clears `ldr64`; camera zeros tensor keys.")
     lines.append("- **Legacy preservation**: 18 legacy effects executable by direct import; none appear in active `RADAR_EFFECTS`/`LIDAR_EFFECTS`/`CAMERA_EFFECTS` registries.")
     lines.append("- **No training-path dependency**: Confirmed zero `pipelines/` or `train*` modules imported.")
     lines.append("- **should_skip()**: Verified deterministic (interval + index_list) and random modes via NoiseInjector; sequence simulation confirms actual deletion rates match configured parameters.")

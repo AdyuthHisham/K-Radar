@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Noise Injection — Visual Inspection (v3, severity levels)</title>
+<style>
+body { font-family: -apple-system,BlinkMacSystemFont,sans-serif; max-width:1700px; margin:0 auto;
+       padding:20px; background:#111; color:#ddd; }
+h1 { color:#e94560; }
+h2 { color:#e94560; margin:30px 0 10px; border-bottom:2px solid #333; padding-bottom:5px; }
+h3 { color:#aaa; margin:15px 0 5px; font-size:14px; text-transform:uppercase; letter-spacing:1px; }
+.frame-box { background:#1a1a2e; border-radius:8px; padding:20px; margin:20px 0; }
+.effect-row { margin:14px 0; }
+.effect-label { font-size:13px; color:#ccc; margin-bottom:6px; }
+.sev-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.sev-grid img { width:100%; border:1px solid #333; border-radius:4px; }
+.caption { text-align:center; font-size:11px; color:#888; margin-bottom:4px; }
+.single-grid { display:grid; grid-template-columns:repeat(1,300px); gap:8px; }
+.single-grid img { width:100%; border:1px solid #333; border-radius:4px; }
+.badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:3px; margin-left:6px; }
+.badge-fixed { background:#e94560; color:#fff; }
+.badge-na { background:#555; color:#fff; }
+.notice { background:#332; border-left:4px solid #e94560; padding:10px 14px; margin:10px 0 20px; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>Noise Injection — Visual Inspection (v3, severity levels)</h1>
+<p>12-effect taxonomy (Rev 2) applied to 3 real K-Radar frames, at low/medium/high severity
+where a severity axis exists. Seed: 42</p>
+<div class="notice">
+<b>v3 adds severity levels to v2.</b> Each severity-capable effect now shows three renders
+side-by-side (low | medium | high) using values reused directly from
+<code>noise-injection-param-sweep-report.md</code>'s tested points. <code>loss_complete</code>
+has no severity axis (always full clear regardless of params, confirmed in the param sweep) and
+is shown as a single reference image per modality. radar/lidar <code>loss_partial</code> still use
+the zero-out-aware <code>render_bev_zeroout()</code> (magenta marker + zoomed origin inset + counts)
+at every severity. See
+<a href="../../../docs/vAIlt/noise-visual-inspection-severity-levels-report.md" style="color:#e94560">noise-visual-inspection-severity-levels-report.md</a>.
+</div>
+<div class="frame-box">
+<h2>Frame: seq001_rdr033</h2>
+<p style="color:#888">seq=1, rdr=33, lidar=1, cam=2</p>
+<h3>RADAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq001_rdr033/radar/radar_clean.png"><img src="frame_seq001_rdr033/radar/radar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/radar/radar_frame_deletion_low.png"><img src="frame_seq001_rdr033/radar/radar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/radar/radar_frame_deletion_medium.png"><img src="frame_seq001_rdr033/radar/radar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/radar/radar_frame_deletion_high.png"><img src="frame_seq001_rdr033/radar/radar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Noise Induced Shifts</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/radar/radar_noise_induced_shifts_low.png"><img src="frame_seq001_rdr033/radar/radar_noise_induced_shifts_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/radar/radar_noise_induced_shifts_medium.png"><img src="frame_seq001_rdr033/radar/radar_noise_induced_shifts_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/radar/radar_noise_induced_shifts_high.png"><img src="frame_seq001_rdr033/radar/radar_noise_induced_shifts_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/radar/radar_loss_partial_low.png"><img src="frame_seq001_rdr033/radar/radar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/radar/radar_loss_partial_medium.png"><img src="frame_seq001_rdr033/radar/radar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/radar/radar_loss_partial_high.png"><img src="frame_seq001_rdr033/radar/radar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq001_rdr033/radar/radar_loss_complete.png"><img src="frame_seq001_rdr033/radar/radar_loss_complete.png"></a></div></div></div>
+<h3>LIDAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq001_rdr033/lidar/lidar_clean.png"><img src="frame_seq001_rdr033/lidar/lidar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/lidar/lidar_frame_deletion_low.png"><img src="frame_seq001_rdr033/lidar/lidar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/lidar/lidar_frame_deletion_medium.png"><img src="frame_seq001_rdr033/lidar/lidar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/lidar/lidar_frame_deletion_high.png"><img src="frame_seq001_rdr033/lidar/lidar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/lidar/lidar_gaussian_noise_low.png"><img src="frame_seq001_rdr033/lidar/lidar_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/lidar/lidar_gaussian_noise_medium.png"><img src="frame_seq001_rdr033/lidar/lidar_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/lidar/lidar_gaussian_noise_high.png"><img src="frame_seq001_rdr033/lidar/lidar_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/lidar/lidar_loss_partial_low.png"><img src="frame_seq001_rdr033/lidar/lidar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/lidar/lidar_loss_partial_medium.png"><img src="frame_seq001_rdr033/lidar/lidar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/lidar/lidar_loss_partial_high.png"><img src="frame_seq001_rdr033/lidar/lidar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq001_rdr033/lidar/lidar_loss_complete.png"><img src="frame_seq001_rdr033/lidar/lidar_loss_complete.png"></a></div></div></div>
+<h3>CAMERA</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq001_rdr033/camera/camera_clean.png"><img src="frame_seq001_rdr033/camera/camera_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/camera/camera_frame_deletion_low.png"><img src="frame_seq001_rdr033/camera/camera_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/camera/camera_frame_deletion_medium.png"><img src="frame_seq001_rdr033/camera/camera_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/camera/camera_frame_deletion_high.png"><img src="frame_seq001_rdr033/camera/camera_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/camera/camera_gaussian_noise_low.png"><img src="frame_seq001_rdr033/camera/camera_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/camera/camera_gaussian_noise_medium.png"><img src="frame_seq001_rdr033/camera/camera_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/camera/camera_gaussian_noise_high.png"><img src="frame_seq001_rdr033/camera/camera_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq001_rdr033/camera/camera_loss_partial_low.png"><img src="frame_seq001_rdr033/camera/camera_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq001_rdr033/camera/camera_loss_partial_medium.png"><img src="frame_seq001_rdr033/camera/camera_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq001_rdr033/camera/camera_loss_partial_high.png"><img src="frame_seq001_rdr033/camera/camera_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq001_rdr033/camera/camera_loss_complete.png"><img src="frame_seq001_rdr033/camera/camera_loss_complete.png"></a></div></div></div>
+</div>
+<div class="frame-box">
+<h2>Frame: seq021_rdr015</h2>
+<p style="color:#888">seq=21, rdr=15, lidar=11, cam=34</p>
+<h3>RADAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq021_rdr015/radar/radar_clean.png"><img src="frame_seq021_rdr015/radar/radar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/radar/radar_frame_deletion_low.png"><img src="frame_seq021_rdr015/radar/radar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/radar/radar_frame_deletion_medium.png"><img src="frame_seq021_rdr015/radar/radar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/radar/radar_frame_deletion_high.png"><img src="frame_seq021_rdr015/radar/radar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Noise Induced Shifts</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/radar/radar_noise_induced_shifts_low.png"><img src="frame_seq021_rdr015/radar/radar_noise_induced_shifts_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/radar/radar_noise_induced_shifts_medium.png"><img src="frame_seq021_rdr015/radar/radar_noise_induced_shifts_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/radar/radar_noise_induced_shifts_high.png"><img src="frame_seq021_rdr015/radar/radar_noise_induced_shifts_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/radar/radar_loss_partial_low.png"><img src="frame_seq021_rdr015/radar/radar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/radar/radar_loss_partial_medium.png"><img src="frame_seq021_rdr015/radar/radar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/radar/radar_loss_partial_high.png"><img src="frame_seq021_rdr015/radar/radar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq021_rdr015/radar/radar_loss_complete.png"><img src="frame_seq021_rdr015/radar/radar_loss_complete.png"></a></div></div></div>
+<h3>LIDAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq021_rdr015/lidar/lidar_clean.png"><img src="frame_seq021_rdr015/lidar/lidar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/lidar/lidar_frame_deletion_low.png"><img src="frame_seq021_rdr015/lidar/lidar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/lidar/lidar_frame_deletion_medium.png"><img src="frame_seq021_rdr015/lidar/lidar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/lidar/lidar_frame_deletion_high.png"><img src="frame_seq021_rdr015/lidar/lidar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/lidar/lidar_gaussian_noise_low.png"><img src="frame_seq021_rdr015/lidar/lidar_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/lidar/lidar_gaussian_noise_medium.png"><img src="frame_seq021_rdr015/lidar/lidar_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/lidar/lidar_gaussian_noise_high.png"><img src="frame_seq021_rdr015/lidar/lidar_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/lidar/lidar_loss_partial_low.png"><img src="frame_seq021_rdr015/lidar/lidar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/lidar/lidar_loss_partial_medium.png"><img src="frame_seq021_rdr015/lidar/lidar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/lidar/lidar_loss_partial_high.png"><img src="frame_seq021_rdr015/lidar/lidar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq021_rdr015/lidar/lidar_loss_complete.png"><img src="frame_seq021_rdr015/lidar/lidar_loss_complete.png"></a></div></div></div>
+<h3>CAMERA</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq021_rdr015/camera/camera_clean.png"><img src="frame_seq021_rdr015/camera/camera_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/camera/camera_frame_deletion_low.png"><img src="frame_seq021_rdr015/camera/camera_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/camera/camera_frame_deletion_medium.png"><img src="frame_seq021_rdr015/camera/camera_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/camera/camera_frame_deletion_high.png"><img src="frame_seq021_rdr015/camera/camera_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/camera/camera_gaussian_noise_low.png"><img src="frame_seq021_rdr015/camera/camera_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/camera/camera_gaussian_noise_medium.png"><img src="frame_seq021_rdr015/camera/camera_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/camera/camera_gaussian_noise_high.png"><img src="frame_seq021_rdr015/camera/camera_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq021_rdr015/camera/camera_loss_partial_low.png"><img src="frame_seq021_rdr015/camera/camera_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq021_rdr015/camera/camera_loss_partial_medium.png"><img src="frame_seq021_rdr015/camera/camera_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq021_rdr015/camera/camera_loss_partial_high.png"><img src="frame_seq021_rdr015/camera/camera_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq021_rdr015/camera/camera_loss_complete.png"><img src="frame_seq021_rdr015/camera/camera_loss_complete.png"></a></div></div></div>
+</div>
+<div class="frame-box">
+<h2>Frame: seq048_rdr035</h2>
+<p style="color:#888">seq=48, rdr=35, lidar=30, cam=89</p>
+<h3>RADAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq048_rdr035/radar/radar_clean.png"><img src="frame_seq048_rdr035/radar/radar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/radar/radar_frame_deletion_low.png"><img src="frame_seq048_rdr035/radar/radar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/radar/radar_frame_deletion_medium.png"><img src="frame_seq048_rdr035/radar/radar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/radar/radar_frame_deletion_high.png"><img src="frame_seq048_rdr035/radar/radar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Noise Induced Shifts</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/radar/radar_noise_induced_shifts_low.png"><img src="frame_seq048_rdr035/radar/radar_noise_induced_shifts_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/radar/radar_noise_induced_shifts_medium.png"><img src="frame_seq048_rdr035/radar/radar_noise_induced_shifts_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/radar/radar_noise_induced_shifts_high.png"><img src="frame_seq048_rdr035/radar/radar_noise_induced_shifts_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/radar/radar_loss_partial_low.png"><img src="frame_seq048_rdr035/radar/radar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/radar/radar_loss_partial_medium.png"><img src="frame_seq048_rdr035/radar/radar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/radar/radar_loss_partial_high.png"><img src="frame_seq048_rdr035/radar/radar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq048_rdr035/radar/radar_loss_complete.png"><img src="frame_seq048_rdr035/radar/radar_loss_complete.png"></a></div></div></div>
+<h3>LIDAR</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq048_rdr035/lidar/lidar_clean.png"><img src="frame_seq048_rdr035/lidar/lidar_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/lidar/lidar_frame_deletion_low.png"><img src="frame_seq048_rdr035/lidar/lidar_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/lidar/lidar_frame_deletion_medium.png"><img src="frame_seq048_rdr035/lidar/lidar_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/lidar/lidar_frame_deletion_high.png"><img src="frame_seq048_rdr035/lidar/lidar_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/lidar/lidar_gaussian_noise_low.png"><img src="frame_seq048_rdr035/lidar/lidar_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/lidar/lidar_gaussian_noise_medium.png"><img src="frame_seq048_rdr035/lidar/lidar_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/lidar/lidar_gaussian_noise_high.png"><img src="frame_seq048_rdr035/lidar/lidar_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial <span class="badge badge-fixed">FIXED RENDER</span></div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/lidar/lidar_loss_partial_low.png"><img src="frame_seq048_rdr035/lidar/lidar_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/lidar/lidar_loss_partial_medium.png"><img src="frame_seq048_rdr035/lidar/lidar_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/lidar/lidar_loss_partial_high.png"><img src="frame_seq048_rdr035/lidar/lidar_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq048_rdr035/lidar/lidar_loss_complete.png"><img src="frame_seq048_rdr035/lidar/lidar_loss_complete.png"></a></div></div></div>
+<h3>CAMERA</h3>
+<div class="effect-row"><div class="effect-label">Clean (reference)</div><div class="single-grid"><div><div class="caption">Clean</div><a href="frame_seq048_rdr035/camera/camera_clean.png"><img src="frame_seq048_rdr035/camera/camera_clean.png"></a></div></div></div>
+<div class="effect-row"><div class="effect-label">Frame Deletion</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/camera/camera_frame_deletion_low.png"><img src="frame_seq048_rdr035/camera/camera_frame_deletion_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/camera/camera_frame_deletion_medium.png"><img src="frame_seq048_rdr035/camera/camera_frame_deletion_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/camera/camera_frame_deletion_high.png"><img src="frame_seq048_rdr035/camera/camera_frame_deletion_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Gaussian Noise</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/camera/camera_gaussian_noise_low.png"><img src="frame_seq048_rdr035/camera/camera_gaussian_noise_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/camera/camera_gaussian_noise_medium.png"><img src="frame_seq048_rdr035/camera/camera_gaussian_noise_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/camera/camera_gaussian_noise_high.png"><img src="frame_seq048_rdr035/camera/camera_gaussian_noise_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Partial</div>
+<div class="sev-grid">
+<div><div class="caption">LOW</div><a href="frame_seq048_rdr035/camera/camera_loss_partial_low.png"><img src="frame_seq048_rdr035/camera/camera_loss_partial_low.png" alt="low"></a></div>
+<div><div class="caption">MEDIUM</div><a href="frame_seq048_rdr035/camera/camera_loss_partial_medium.png"><img src="frame_seq048_rdr035/camera/camera_loss_partial_medium.png" alt="medium"></a></div>
+<div><div class="caption">HIGH</div><a href="frame_seq048_rdr035/camera/camera_loss_partial_high.png"><img src="frame_seq048_rdr035/camera/camera_loss_partial_high.png" alt="high"></a></div>
+</div></div>
+<div class="effect-row"><div class="effect-label">Loss Complete<span class="badge badge-na">N/A - no severity axis</span></div><div class="single-grid"><div><div class="caption">Always full clear</div><a href="frame_seq048_rdr035/camera/camera_loss_complete.png"><img src="frame_seq048_rdr035/camera/camera_loss_complete.png"></a></div></div></div>
+</div>
+<hr><p>Severity params: <a href="severity_parameters.yaml" style="color:#e94560">severity_parameters.yaml</a></p>
+<p>Base params (v2): <a href="effect_parameters.yaml" style="color:#e94560">effect_parameters.yaml</a></p>
+<p>Script: /home/adhish/Productivity/AMSCUP/repos/K-Radar/datasets/effects/visualize_effects_v3_severity.py</p>
+</body>
+</html>

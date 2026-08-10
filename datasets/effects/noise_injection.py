@@ -8,7 +8,6 @@ Data-structure conventions (from K-Radar Fusion dataset):
     rdr_sparse    : (N, 4+)  numpy — [x, y, z, power (, doppler)]
     rdr_polar_3d  : (2, R, A, E)  numpy — [0]=power plane, [1]=doppler plane
     ldr64         : (N, M)   numpy — [x, y, z, intensity, ring, ...] (M >= 3)
-    pc100p        : (N, 5+)  numpy — [x, y, z, power, doppler, ...]
     camera img    : (3, H, W) torch.Tensor — ToTensor() + Normalize(dset_mean, dset_std)
 
 TAXONOMY (Rev 2): 12 effects, 4 per modality:
@@ -107,22 +106,29 @@ def _frame_deletion_check(params: dict, rng: np.random.Generator,
 # ──────────────────────────────────────────────
 
 
+# Keys cleared by frame_deletion, per modality. Shared with NoiseInjector's cached
+# should_skip()-consumption path (_apply_cached_frame_deletion) so both call sites
+# clear exactly the same keys.
+_RADAR_FRAME_DELETION_KEYS = ["rdr_sparse", "rdr_polar_3d"]
+_LIDAR_FRAME_DELETION_KEYS = ["ldr64"]
+
+
 def radar_frame_deletion(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
     """R1 — Radar frame deletion (deterministic or random).
 
-    When fired, sets ``rdr_sparse``, ``rdr_polar_3d``, and ``pc100p`` to None.
+    When fired, sets ``rdr_sparse`` and ``rdr_polar_3d`` to None.
     Frame index read from ``dict_item['meta']['idx']['rdr']`` for deterministic mode.
     """
     frame_index = _get_modality_idx(dict_item, "rdr")
     if _frame_deletion_check(params, rng, frame_index):
-        _set_none(dict_item, ["rdr_sparse", "rdr_polar_3d", "pc100p"])
+        _set_none(dict_item, _RADAR_FRAME_DELETION_KEYS)
     return dict_item
 
 
 def radar_noise_induced_shifts(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
     """R2 — Shift radar detection positions by a noise process.
 
-    Each point in ``rdr_sparse[:, :3]`` and ``pc100p[:, :3]`` is displaced
+    Each point in ``rdr_sparse[:, :3]`` is displaced
     by a random vector.  This is a *coordinate shift* effect — distinct from
     additive power noise (old power_gaussian_noise) and distinct from azimuth
     jitter (old azimuth_jitter).
@@ -141,7 +147,7 @@ def radar_noise_induced_shifts(dict_item: dict, params: dict, rng: np.random.Gen
     distribution = params.get("distribution", "gaussian")
     clip_radius = params.get("clip_radius", None)
 
-    for key in ["rdr_sparse", "pc100p"]:
+    for key in ["rdr_sparse"]:
         if _has_key(dict_item, key) and dict_item[key].shape[1] >= 3:
             arr = dict_item[key]
             n = len(arr)
@@ -175,36 +181,45 @@ def radar_noise_induced_shifts(dict_item: dict, params: dict, rng: np.random.Gen
 
 
 def radar_loss_partial(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
-    """R3 — Partial radar data loss by Bernoulli sampling on detections.
+    """R3 — Partial radar data loss via zero-out (extrapolated from AI-MSF-Benchmark's LiDAR mechanism).
 
-    Each point in ``rdr_sparse`` and ``pc100p`` is independently dropped
-    with probability ``fraction``.
+    Zeroes out a subset of rows in ``rdr_sparse`` via exact-count permutation
+    selection.  Array row count is preserved (no deletion).
+
+    NOTE: AI-MSF-Benchmark does not define a radar operator.  This implementation
+    extrapolates the same zero-out-via-permutation principle used by
+    AI-MSF-Benchmark's LiDAR operator onto radar's column format.  Not a direct port.
 
     Parameters
     ----------
     fraction : float, optional
-        Fraction of points/returns to remove (default 0.3).
+        Fraction of points/returns to zero-out (default 0.3).
     """
     fraction = params.get("fraction", 0.3)
-    for key in ["rdr_sparse", "pc100p"]:
+    if fraction <= 0.0:
+        return dict_item
+    for key in ["rdr_sparse"]:
         if _has_key(dict_item, key):
             arr = dict_item[key]
             n = len(arr)
-            keep = rng.uniform(size=n) >= fraction
-            dict_item[key] = arr[keep]
+            c = arr.shape[1]
+            loss_num = int(n * fraction)
+            if loss_num > 0:
+                index = rng.permutation(n)[:loss_num]
+                arr[index] = np.zeros(c, dtype=arr.dtype)
     return dict_item
 
 
 def radar_loss_complete(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
     """R4 — Full radar data blackout for this frame.
 
-    Sets ``rdr_sparse``, ``rdr_polar_3d``, and ``pc100p`` to None.
+    Sets ``rdr_sparse`` and ``rdr_polar_3d`` to None.
     Semantically distinct from ``loss_partial(fraction=1.0)`` — this
     represents a total sensor blackout, not extreme sampling.
 
     Parameters: (none required)
     """
-    _set_none(dict_item, ["rdr_sparse", "rdr_polar_3d", "pc100p"])
+    _set_none(dict_item, ["rdr_sparse", "rdr_polar_3d"])
     return dict_item
 
 
@@ -221,7 +236,7 @@ def lidar_frame_deletion(dict_item: dict, params: dict, rng: np.random.Generator
     """
     frame_index = _get_modality_idx(dict_item, "ldr")
     if _frame_deletion_check(params, rng, frame_index):
-        _set_none(dict_item, ["ldr64"])
+        _set_none(dict_item, _LIDAR_FRAME_DELETION_KEYS)
     return dict_item
 
 
@@ -262,20 +277,30 @@ def lidar_gaussian_noise(dict_item: dict, params: dict, rng: np.random.Generator
 
 
 def lidar_loss_partial(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
-    """L3 — Partial LiDAR data loss by Bernoulli sampling.
+    """L3 — Partial LiDAR data loss via zero-out (ported from AI-MSF-Benchmark).
 
-    Each point in ``ldr64`` independently dropped with probability ``fraction``.
+    Zeroes out a subset of points in ``ldr64`` using exact-count permutation
+    selection.  Replaces the previous Bernoulli deletion with AI-MSF-Benchmark's
+    zero-out approach.  Array row count is preserved.
+
+    Source: ``corruption/operator/lidar_operator.py:29-34``
 
     Parameters
     ----------
     fraction : float, optional
-        Fraction of points to remove (default 0.3).
+        Fraction of points to zero-out (default 0.3).
     """
     fraction = params.get("fraction", 0.3)
+    if fraction <= 0.0:
+        return dict_item
     if _has_key(dict_item, "ldr64"):
-        n = len(dict_item["ldr64"])
-        keep = rng.uniform(size=n) >= fraction
-        dict_item["ldr64"] = dict_item["ldr64"][keep]
+        arr = dict_item["ldr64"]
+        n = len(arr)
+        c = arr.shape[1]
+        loss_num = int(n * fraction)
+        if loss_num > 0:
+            index = rng.permutation(n)[:loss_num]
+            arr[index] = np.zeros(c, dtype=arr.dtype)
     return dict_item
 
 
@@ -365,55 +390,48 @@ def camera_gaussian_noise(dict_item: dict, params: dict, rng: np.random.Generato
 
 
 def camera_loss_partial(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
-    """C3 — Partial image data loss via single contiguous zeroed region.
+    """C3 — Partial image data loss via per-pixel dropout (ported from AI-MSF-Benchmark).
 
-    Zeros out a single rectangular region covering approximately ``fraction``
-    of the image area.  Region is randomly positioned.
+    Flattens the full (H, W, 3) uint8 image, selects exact-count indices via
+    permutation, and zeroes them.  Individual colour channels of the same pixel
+    can be dropped independently (a confirmed property of the source mechanism
+    from ``corruption/operator/image_operator.py:126-134``).
 
-    Distinct from multi-patch occlusion — this is the canonical "partial loss"
-    corruption for images.
+    Replaces the previous rectangular block-occlusion implementation.
+
+    NOTE: This operates on the flattened (H*W*3,) array, NOT grouped by pixel.
+    This means R/G/B channels of the same pixel are zeroed independently.
 
     Parameters
     ----------
     fraction : float, optional
-        Fraction of image area to zero out (default 0.2).
+        Fraction of individual scalar pixel values to zero-out (default 0.2).
+        Uses continuous semantics (superset of AI-MSF-Benchmark's 5-level
+        discrete severity) for compatibility with existing K-Radar configs.
     """
     fraction = params.get("fraction", 0.2)
     if fraction <= 0.0:
         return dict_item
-    if fraction >= 1.0:
-        # Complete blackout via the region mechanism; clip to 99% to avoid
-        # degenerate region size.
-        fraction = 0.99
 
     for k in _camera_keys(dict_item):
         img_np = _to_nhwc(dict_item[k])  # (H, W, 3) uint8
-        H, W = img_np.shape[:2]
+        shape = img_np.shape
 
-        # Region size: target_fraction = (ph * pw) / (H * W)
-        # Fix aspect ratio ~1 (square-ish), compute side length
-        target_area = fraction * H * W
-        side = int(np.sqrt(target_area))
-        ph = min(max(1, side), H)
-        pw = min(max(1, side), W)
-        # Adjust to get as close as possible to target_area
-        # Scale one dimension to hit area more closely
-        if ph * pw > 0:
-            ratio = np.clip(target_area / (ph * pw), 0.5, 2.0)
-            if ratio >= 1.0:
-                pw = min(W, int(pw * np.sqrt(ratio)))
-            else:
-                ph = min(H, int(ph / np.sqrt(ratio)))
+        # Flatten to 1D, select exact count, zero out, reshape back.
+        # This matches AI-MSF-Benchmark's ImageOperator.loss_partial:
+        #   arr = image.copy().flatten()
+        #   loss_num = int(len(arr) * params)
+        #   index = np.random.permutation(len(arr))[:loss_num]
+        #   arr[index] = 0
+        #   image = arr.reshape(img_shape)
+        flat = img_np.flatten()
+        n_total = len(flat)
+        loss_num = int(n_total * fraction)
+        if loss_num > 0:
+            index = rng.permutation(n_total)[:loss_num]
+            flat[index] = 0
 
-        ph = max(1, min(ph, H))
-        pw = max(1, min(pw, W))
-
-        y0 = rng.integers(0, H - ph + 1) if H > ph else 0
-        x0 = rng.integers(0, W - pw + 1) if W > pw else 0
-
-        # Zero out the region
-        img_np[y0: y0 + ph, x0: x0 + pw] = 0
-        dict_item[k] = _from_nhwc(img_np)
+        dict_item[k] = _from_nhwc(flat.reshape(shape))
 
     return dict_item
 
@@ -516,6 +534,29 @@ class NoiseInjector:
         self._lidar_effects = self._resolve("lidar", lidar_effects)
         self._camera_effects = self._resolve("camera", camera_effects)
 
+        # should_skip() frame_deletion decisions, keyed by (modality, frame_index).
+        # Written by should_skip(), read-and-popped by the matching __call__() so the
+        # two call sites make the same decision for the same frame instead of each
+        # drawing independently from the shared per-effect sub_rng. See _apply_list()
+        # and should_skip() below, and the fix report for lifecycle rationale.
+        self._skip_cache: dict[tuple[str, int], bool] = {}
+
+    def clear_skip_cache(self) -> None:
+        """Reset the should_skip() decision cache.
+
+        The cache persists for the injector's lifetime by default (matching the
+        per-effect sub_rng streams, which are also never reset mid-lifetime) and
+        self-cleans on the normal should_skip() -> __call__() path: each entry is
+        popped the moment __call__() consumes it. It only accumulates when
+        should_skip() is called but __call__() is deliberately never invoked for
+        that frame (the documented "skip loading entirely" usage) — bounded by
+        roughly (frames visited x deletion rate) entries, i.e. a small fraction of
+        the dataset size, not unbounded. Call this explicitly if reusing one
+        injector across many passes over the same frame indices and that bound
+        is still undesirable (e.g. should_skip called far more often than __call__).
+        """
+        self._skip_cache.clear()
+
     def _resolve(
         self, modality: str, user_effects: list[Any]
     ) -> list[tuple[str, Callable, float, dict, np.random.Generator]]:
@@ -537,18 +578,52 @@ class NoiseInjector:
             resolved.append((name, fn, p, params, sub_rng))
         return resolved
 
+    @staticmethod
+    def _apply_cached_frame_deletion(modality: str, d: dict) -> dict:
+        """Apply a should_skip()-decided frame_deletion outcome without drawing rng.
+
+        Mirrors the clearing behaviour of radar_frame_deletion / lidar_frame_deletion /
+        camera_frame_deletion exactly (same keys), but never re-consults ``rng`` — the
+        decision was already made by should_skip() and is being replayed here so the
+        two call sites can't disagree.
+        """
+        if modality == "radar":
+            _set_none(d, _RADAR_FRAME_DELETION_KEYS)
+        elif modality == "lidar":
+            _set_none(d, _LIDAR_FRAME_DELETION_KEYS)
+        elif modality == "camera":
+            for k in _camera_keys(d):
+                d[k] = _zero_camera_tensor(d[k])
+        return d
+
     def _apply_list(
         self,
         d: dict,
         effects: list[tuple[str, Callable, float, dict, np.random.Generator]],
         frame_index: int | None = None,
+        modality: str | None = None,
     ) -> dict:
         """Apply a list of effects with per-effect probability gating.
 
         Frame deletion effects are checked first.  If they fire, the sensor
         key(s) are set to None and subsequent effects skip via _has_key().
+
+        For ``frame_deletion``, if should_skip() was already called for this
+        exact (modality, frame_index) — i.e. there's a matching entry in
+        ``self._skip_cache`` — that cached decision is replayed instead of
+        drawing fresh randomness, so should_skip() and __call__() can never
+        disagree about the same frame. Callers who never call should_skip()
+        never populate the cache, so this is a no-op for them and their rng
+        consumption / decisions are unchanged.
         """
         for name, fn, p, params, sub_rng in effects:
+            if name == "frame_deletion" and modality is not None and frame_index is not None:
+                cache_key = (modality, frame_index)
+                if cache_key in self._skip_cache:
+                    deleted = self._skip_cache.pop(cache_key)
+                    if deleted:
+                        d = self._apply_cached_frame_deletion(modality, d)
+                    continue
             if sub_rng.uniform() < p:
                 # Inject frame_index into params for frame_deletion effects
                 if name == "frame_deletion":
@@ -562,9 +637,13 @@ class NoiseInjector:
 
         Args:
             dict_item: K-Radar frame dict from dataset[idx].
-            frame_index: Optional global frame index.  Required by deterministic
-                         frame_deletion (interval/index_list modes).  If omitted,
-                         only random-mode frame deletion will work.
+            frame_index: Optional global frame index. Used to (a) key the
+                         should_skip() decision cache (see _apply_list) and
+                         (b) populate ``params["_caller_frame_index"]``, which
+                         no effect function currently reads — deterministic
+                         frame_deletion is driven solely by
+                         ``dict_item['meta']['idx'][modality]``, populated by
+                         the caller/dataset independently of this argument.
 
         Order: radar -> LiDAR -> camera.  Frame deletion applied first within
         each modality so subsequent effects skip empty sensor keys.
@@ -572,11 +651,11 @@ class NoiseInjector:
         Returns the modified dict_item (modifies in-place).
         """
         if self._radar_effects:
-            dict_item = self._apply_list(dict_item, self._radar_effects, frame_index)
+            dict_item = self._apply_list(dict_item, self._radar_effects, frame_index, "radar")
         if self._lidar_effects:
-            dict_item = self._apply_list(dict_item, self._lidar_effects, frame_index)
+            dict_item = self._apply_list(dict_item, self._lidar_effects, frame_index, "lidar")
         if self._camera_effects:
-            dict_item = self._apply_list(dict_item, self._camera_effects, frame_index)
+            dict_item = self._apply_list(dict_item, self._camera_effects, frame_index, "camera")
 
         meta = self._metadata()
         if "meta" not in dict_item:
@@ -590,6 +669,14 @@ class NoiseInjector:
         Called by the eval script BEFORE loading the frame to avoid wasted I/O.
         Only works for ``frame_deletion`` effects configured in the given modality.
 
+        The decision made here is cached (keyed by ``(modality, frame_index)``)
+        and is the ACTUAL decision — a subsequent __call__() for the same
+        frame_index will consult and replay this cached decision (via
+        _apply_list) instead of drawing fresh randomness, so should_skip() and
+        __call__() are guaranteed consistent for the same frame. If __call__()
+        is never invoked for this frame (the intended "skip loading" usage),
+        the cache entry is simply never consumed; see clear_skip_cache().
+
         Args:
             frame_index: Global frame index.
             modality: One of ``'radar'``, ``'lidar'``, ``'camera'``.
@@ -602,12 +689,20 @@ class NoiseInjector:
             "lidar": self._lidar_effects,
             "camera": self._camera_effects,
         }.get(modality, [])
+        if not any(name == "frame_deletion" for name, *_ in effect_list):
+            # No frame_deletion configured for this modality — nothing to decide
+            # or cache; avoid leaving a dead cache entry that _apply_list can
+            # never consume.
+            return False
+        result = False
         for name, fn, p, params, sub_rng in effect_list:
             if name == "frame_deletion" and sub_rng.uniform() < p:
                 # Deterministic check needs frame_index
                 if _frame_deletion_check(params, sub_rng, frame_index):
-                    return True
-        return False
+                    result = True
+                    break
+        self._skip_cache[(modality, frame_index)] = result
+        return result
 
     def _metadata(self) -> dict:
         """Return a summary of the current config for logging / audit."""
@@ -649,10 +744,6 @@ def power_gaussian_noise(dict_item: dict, params: dict, rng: np.random.Generator
         pw = dict_item["rdr_polar_3d"][0]
         noise = rng.normal(0.0, std, size=pw.shape)
         dict_item["rdr_polar_3d"][0] = np.clip(pw + noise, clip_min, None)
-    if _has_key(dict_item, "pc100p") and dict_item["pc100p"].shape[1] >= 4:
-        arr = dict_item["pc100p"]
-        noise = rng.normal(0.0, std, size=arr[:, 3].shape)
-        arr[:, 3] = np.clip(arr[:, 3] + noise, clip_min, None)
     return dict_item
 
 
@@ -663,10 +754,6 @@ def sparse_point_dropout(dict_item: dict, params: dict, rng: np.random.Generator
         n = len(dict_item["rdr_sparse"])
         keep = rng.uniform(size=n) >= rate
         dict_item["rdr_sparse"] = dict_item["rdr_sparse"][keep]
-    if _has_key(dict_item, "pc100p"):
-        n = len(dict_item["pc100p"])
-        keep = rng.uniform(size=n) >= rate
-        dict_item["pc100p"] = dict_item["pc100p"][keep]
     return dict_item
 
 
@@ -680,11 +767,6 @@ def range_attenuation(dict_item: dict, params: dict, rng: np.random.Generator) -
             r = np.linalg.norm(arr[:, :3], axis=1)
             atten = np.exp(-alpha * np.maximum(r - r0, 0.0))
             arr[:, 3] = arr[:, 3] * atten
-    if _has_key(dict_item, "pc100p") and dict_item["pc100p"].shape[1] >= 4:
-        arr = dict_item["pc100p"]
-        r = np.linalg.norm(arr[:, :3], axis=1)
-        atten = np.exp(-alpha * np.maximum(r - r0, 0.0))
-        arr[:, 3] = arr[:, 3] * atten
     return dict_item
 
 
@@ -702,15 +784,6 @@ def doppler_corruption(dict_item: dict, params: dict, rng: np.random.Generator) 
         elif mode == "mask":
             mask = rng.uniform(size=dop.shape) < mask_rate
             dop[mask] = 0.0
-    if _has_key(dict_item, "pc100p") and dict_item["pc100p"].shape[1] >= 5:
-        arr = dict_item["pc100p"]
-        if mode == "gaussian":
-            arr[:, 4] += rng.normal(0.0, std, size=arr[:, 4].shape)
-        elif mode == "zero":
-            arr[:, 4] = 0.0
-        elif mode == "mask":
-            mask = rng.uniform(size=arr[:, 4].shape) < mask_rate
-            arr[mask, 4] = 0.0
     return dict_item
 
 
@@ -770,8 +843,6 @@ def power_saturation(dict_item: dict, params: dict, rng: np.random.Generator) ->
         dict_item["rdr_sparse"][:, 3] = np.clip(dict_item["rdr_sparse"][:, 3], floor, ceiling)
     if _has_key(dict_item, "rdr_polar_3d"):
         dict_item["rdr_polar_3d"][0] = np.clip(dict_item["rdr_polar_3d"][0], floor, ceiling)
-    if _has_key(dict_item, "pc100p") and dict_item["pc100p"].shape[1] >= 4:
-        dict_item["pc100p"][:, 3] = np.clip(dict_item["pc100p"][:, 3], floor, ceiling)
     return dict_item
 
 

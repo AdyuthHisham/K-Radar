@@ -1,0 +1,56 @@
+# Effect parameters — Noise Visual Inspection v2
+seed: 42
+
+radar:
+  frame_deletion:
+    mode: deterministic
+    index_list: [0]
+
+  frame_deletion_random:
+    mode: random
+    p: 0.5
+
+  noise_induced_shifts:
+    shift_std: 2.0
+    distribution: gaussian
+
+  loss_partial:
+    fraction: 0.5
+
+  loss_complete:
+
+lidar:
+  frame_deletion:
+    mode: deterministic
+    index_list: [0]
+
+  frame_deletion_random:
+    mode: random
+    p: 0.5
+
+  gaussian_noise:
+    sigma_xy: 0.5
+    sigma_z: 0.2
+
+  loss_partial:
+    fraction: 0.5
+
+  loss_complete:
+
+camera:
+  frame_deletion:
+    mode: deterministic
+    index_list: [0]
+
+  frame_deletion_random:
+    mode: random
+    p: 0.5
+
+  gaussian_noise:
+    sigma: 40
+
+  loss_partial:
+    fraction: 0.3
+
+  loss_complete:
+

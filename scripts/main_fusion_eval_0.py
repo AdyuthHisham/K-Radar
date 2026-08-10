@@ -1,10 +1,15 @@
+import argparse
 import os
+import sys
+import os.path as osp
+
 os.environ['CUDA_VISIBLE_DEVICES']= '0'
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
+import yaml
 
 from tqdm import tqdm
 from scipy.io import loadmat
@@ -16,8 +21,6 @@ try:
     from utils.kitti_eval.eval_revised import get_official_eval_result_revised
     import utils.kitti_eval.kitti_common as kitti
 except:
-    import sys
-    import os.path as osp
     sys.path.append(osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))))
     from utils.util_config import cfg, cfg_from_yaml_file
     from utils.util_pipeline import *
@@ -25,14 +28,39 @@ except:
     from utils.kitti_eval.eval_revised import get_official_eval_result_revised
     import utils.kitti_eval.kitti_common as kitti
 
+# Noise injection — never imported during training
+from datasets.effects import NoiseInjector, EffectConfig, Effect
+
 ### [Configurations] ###
 # We note # [TBC:] in the configurations to be changed.
 PATH_CFG = './configs/A2F_v2_0_final.yml'
 PATH_PT = './pretrained/A2F_v2_0_final_10.pt'
 ### [Configurations] ###
 
+
+class _NoiseInjectedDataset:
+    """Transparent wrapper that applies NoiseInjector after __getitem__.
+
+    Passes through all attributes (collate_fn, label, dict_t_params, etc.)
+    to the wrapped dataset so downstream code is unaffected.  Only
+    ``__getitem__`` and ``__len__`` are overridden.
+    """
+    def __init__(self, dataset, injector: NoiseInjector):
+        self._dataset = dataset
+        self._injector = injector
+
+    def __getitem__(self, idx):
+        item = self._dataset[idx]
+        return self._injector(item, frame_index=idx)
+
+    def __len__(self):
+        return len(self._dataset)
+
+    def __getattr__(self, name):
+        return getattr(self._dataset, name)
+
 class ResultVis():
-    def __init__(self, path_cfg=None, path_pt=None):
+    def __init__(self, path_cfg=None, path_pt=None, noise_config_path=None):
         self.cfg = cfg_from_yaml_file(path_cfg, cfg)
 
         ### [Custom Configurations] ###
@@ -72,6 +100,29 @@ class ResultVis():
         if path_pt is not None:
             self.network.load_state_dict(torch.load(path_pt))
 
+        # ── Noise injection (bypass strategy: independent of cfg_effect) ──
+        self._noise_injector = None
+        if noise_config_path is not None:
+            with open(noise_config_path, 'r') as f:
+                raw = yaml.safe_load(f)
+            effects_dict = {}
+            for modality in ('radar', 'lidar', 'camera'):
+                mod_list = raw.get(modality, [])
+                effects_dict[modality] = [
+                    Effect(name=e['name'], p=e.get('p', 1.0), params=e.get('params', {}))
+                    for e in mod_list
+                ]
+            config = EffectConfig(
+                seed=raw.get('seed', 42),
+                radar=effects_dict['radar'],
+                lidar=effects_dict['lidar'],
+                camera=effects_dict['camera'],
+            )
+            self._noise_injector = NoiseInjector(config)
+            print(f'[noise-injection] Loaded config from {noise_config_path} (seed={config.seed}, '
+                  f'radar={len(config.radar or [])}, lidar={len(config.lidar or [])}, '
+                  f'camera={len(config.camera or [])} effects)')
+
         consider_effects = False
         if not consider_effects:
             self.cfg_effect = None
@@ -109,6 +160,9 @@ class ResultVis():
             for idx_frame in tqdm(indices):
                 print(f'* idx frame = {idx_frame}')
                 dict_item = dataset[idx_frame]
+                # ── Noise injection (bypass) ──
+                if self._noise_injector is not None:
+                    dict_item = self._noise_injector(dict_item, frame_index=idx_frame)
                 batch_dict = dataset.collate_fn([dict_item]) # single batch
 
                 batch_dict['get_att_maps'] = None # att maps
@@ -559,6 +613,9 @@ class ResultVis():
         self.path_log = os.path.join(self.cfg.GENERAL.LOGGING.PATH_LOGGING, str_exp)
 
         self.dataset_test = build_dataset(self, split='test') # 'all', 'train', 'test'
+        # ── Noise injection (bypass: wrap, don't modify build_dataset) ──
+        if self._noise_injector is not None:
+            self.dataset_test = _NoiseInjectedDataset(self.dataset_test, self._noise_injector)
 
         class_names = []
         dict_label = self.dataset_test.label.copy()
@@ -907,6 +964,10 @@ class ResultVis():
 
 
 if __name__ == '__main__':
-    pipe_vis = ResultVis(path_cfg=PATH_CFG, path_pt=PATH_PT)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--noise-config', type=str, default=None,
+                        help='Path to YAML noise-injection config (opt-in). If omitted, behaviour is identical to baseline.')
+    args = parser.parse_args()
+    pipe_vis = ResultVis(path_cfg=PATH_CFG, path_pt=PATH_PT, noise_config_path=args.noise_config)
     # pipe_vis.vis_objects()
     pipe_vis.validate_kitti_conditional()

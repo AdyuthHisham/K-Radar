@@ -180,8 +180,10 @@ def test_radar_frame_deletion_deterministic_interval():
            d["rdr_sparse"] is None)
     _check("R1 del interval: rdr_polar_3d is None",
            d["rdr_polar_3d"] is None)
-    _check("R1 del interval: pc100p is None",
-           d["pc100p"] is None)
+    # pc100p is NOT set to None by frame deletion (it is untouched)
+    _check("R1 del interval: pc100p NOT modified",
+           d["pc100p"] is not None,
+           f"type={type(d['pc100p']).__name__}")
 
     # Frame 21 -> not deleted
     d2 = _make_dict_item(rdr_frame_idx=21)
@@ -213,8 +215,10 @@ def test_radar_frame_deletion_random():
            d["rdr_sparse"] is None)
     _check("R1 del random p=1: rdr_polar_3d is None",
            d["rdr_polar_3d"] is None)
-    _check("R1 del random p=1: pc100p is None",
-           d["pc100p"] is None)
+    # pc100p is NOT set to None (untouched by frame deletion)
+    _check("R1 del random p=1: pc100p NOT modified",
+           d["pc100p"] is not None,
+           f"type={type(d['pc100p']).__name__}")
 
     # p=0.0 -> never deletes
     d2 = _make_dict_item()
@@ -263,16 +267,30 @@ def test_radar_noise_induced_shifts():
 
 
 def test_radar_loss_partial():
-    """R3: partial loss removes a fraction of points."""
+    """R3: partial loss zeroes out a fraction of rows (shape preserved)."""
     rng = np.random.default_rng(204)
 
+    # fraction=0.5 -> exactly int(N*0.5) rows = all-zero, count unchanged
     d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
-    n_orig = len(d["rdr_sparse"])
+    arr_orig = d["rdr_sparse"].copy()
+    n_orig = len(arr_orig)
     d = radar_loss_partial(d, {"fraction": 0.5}, rng)
-    ratio = len(d["rdr_sparse"]) / n_orig
-    _check("R3 partial: fraction=0.5 -> count within 5% of 0.5",
-           0.45 <= ratio <= 0.55,
-           f"ratio={ratio:.3f}")
+    n_after = len(d["rdr_sparse"])
+    n_zeroed = int(np.sum(np.all(d["rdr_sparse"] == 0, axis=1)))
+    expected_zeroed = int(n_orig * 0.5)
+    _check("R3 partial: fraction=0.5 -> row count unchanged",
+           n_after == n_orig,
+           f"n_after={n_after}, n_orig={n_orig}")
+    _check("R3 partial: fraction=0.5 -> exactly int(N*frac) rows zeroed",
+           n_zeroed == expected_zeroed,
+           f"zeroed={n_zeroed}, expected={expected_zeroed}")
+    # Non-selected rows are untouched
+    zeroed_indices = np.where(np.all(d["rdr_sparse"] == 0, axis=1))[0]
+    kept_mask = np.ones(n_orig, dtype=bool)
+    kept_mask[zeroed_indices] = False
+    _check("R3 partial: non-selected rows unchanged",
+           np.allclose(d["rdr_sparse"][kept_mask], arr_orig[kept_mask]),
+           "non-selected rows differed from original")
 
     # fraction=0.0 -> no change
     d2 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
@@ -280,12 +298,16 @@ def test_radar_loss_partial():
     d2 = radar_loss_partial(d2, {"fraction": 0.0}, rng)
     _check("R3 partial: fraction=0.0 -> count unchanged",
            len(d2["rdr_sparse"]) == n2)
+    _check("R3 partial: fraction=0.0 -> no zeroed rows",
+           np.all(d2["rdr_sparse"] != 0))
 
-    # fraction=1.0 -> empty array (NOT None — distinct from loss_complete)
+    # fraction=1.0 -> all rows zeroed, array NOT None (distinct from loss_complete)
     d3 = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    n3 = len(d3["rdr_sparse"])
     d3 = radar_loss_partial(d3, {"fraction": 1.0}, rng)
-    _check("R3 partial: fraction=1.0 -> empty array, not None",
-           len(d3["rdr_sparse"]) == 0 and d3["rdr_sparse"] is not None)
+    _check("R3 partial: fraction=1.0 -> all rows zeroed, not None",
+           d3["rdr_sparse"] is not None and len(d3["rdr_sparse"]) == n3
+           and np.all(d3["rdr_sparse"] == 0))
 
 
 def test_radar_loss_complete():
@@ -297,12 +319,14 @@ def test_radar_loss_complete():
            d["rdr_sparse"] is None)
     _check("R4 complete: rdr_polar_3d is None",
            d["rdr_polar_3d"] is None)
-    _check("R4 complete: pc100p is None",
-           d["pc100p"] is None)
+    # pc100p is NOT set to None by loss_complete (it is untouched)
+    _check("R4 complete: pc100p NOT modified",
+           d["pc100p"] is not None,
+           f"type={type(d['pc100p']).__name__}")
 
 
 def test_radar_loss_partial_vs_complete_distinction():
-    """Partial (fraction=1.0) produces empty array; complete produces None."""
+    """Partial (fraction=1.0) = all rows zeroed; complete = None."""
     rng = np.random.default_rng(206)
     d_partial = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
     d_complete = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
@@ -310,8 +334,10 @@ def test_radar_loss_partial_vs_complete_distinction():
     d_partial = radar_loss_partial(d_partial, {"fraction": 1.0}, rng)
     d_complete = radar_loss_complete(d_complete, {}, rng)
 
-    _check("R3 vs R4: partial -> array, not None",
-           isinstance(d_partial["rdr_sparse"], np.ndarray) and len(d_partial["rdr_sparse"]) == 0)
+    _check("R3 vs R4: partial -> all-zero array, not None",
+           isinstance(d_partial["rdr_sparse"], np.ndarray)
+           and len(d_partial["rdr_sparse"]) > 0
+           and np.all(d_partial["rdr_sparse"] == 0))
     _check("R3 vs R4: complete -> None",
            d_complete["rdr_sparse"] is None)
 
@@ -390,28 +416,45 @@ def test_lidar_gaussian_noise():
 
 
 def test_lidar_loss_partial():
-    """L3: partial LiDAR loss removes fraction of points."""
+    """L3: partial LiDAR loss zeroes out a fraction of points (shape preserved)."""
     rng = np.random.default_rng(209)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_camera=False)
-    n_orig = len(d["ldr64"])
+    arr_orig = d["ldr64"].copy()
+    n_orig = len(arr_orig)
     d = lidar_loss_partial(d, {"fraction": 0.25}, rng)
-    ratio = len(d["ldr64"]) / n_orig
-    _check("L3 partial: fraction=0.25 -> count within 5% of 0.75",
-           0.70 <= ratio <= 0.80,
-           f"ratio={ratio:.3f}")
+    n_after = len(d["ldr64"])
+    n_zeroed = int(np.sum(np.all(d["ldr64"] == 0, axis=1)))
+    expected_zeroed = int(n_orig * 0.25)
+    _check("L3 partial: fraction=0.25 -> row count unchanged",
+           n_after == n_orig,
+           f"n_after={n_after}, n_orig={n_orig}")
+    _check("L3 partial: fraction=0.25 -> exactly int(N*frac) rows zeroed",
+           n_zeroed == expected_zeroed,
+           f"zeroed={n_zeroed}, expected={expected_zeroed}")
+    # Non-selected rows untouched
+    zeroed_idx = np.where(np.all(d["ldr64"] == 0, axis=1))[0]
+    kept = np.ones(n_orig, dtype=bool)
+    kept[zeroed_idx] = False
+    _check("L3 partial: non-selected rows unchanged",
+           np.allclose(d["ldr64"][kept], arr_orig[kept]),
+           "non-selected rows differed from original")
 
     d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_camera=False)
     d2 = lidar_loss_partial(d2, {"fraction": 0.0}, rng)
     _check("L3 partial: fraction=0 -> no change",
            len(d2["ldr64"]) == 500)
+    _check("L3 partial: fraction=0 -> no zeroed rows",
+           np.all(d2["ldr64"] != 0))
 
     d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_camera=False)
+    n3 = len(d3["ldr64"])
     d3 = lidar_loss_partial(d3, {"fraction": 1.0}, rng)
-    _check("L3 partial: fraction=1 -> empty array, not None",
-           len(d3["ldr64"]) == 0 and d3["ldr64"] is not None)
+    _check("L3 partial: fraction=1 -> all rows zeroed, not None",
+           d3["ldr64"] is not None and len(d3["ldr64"]) == n3
+           and np.all(d3["ldr64"] == 0))
 
 
 def test_lidar_loss_complete():
@@ -481,39 +524,59 @@ def test_camera_gaussian_noise():
 
 
 def test_camera_loss_partial():
-    """C3: partial camera loss zeros a contiguous region."""
+    """C3: partial camera loss via flatten-permute-zero (AI-MSF-Benchmark port)."""
     rng = np.random.default_rng(213)
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
-    H, W = 128, 256
-    d["front0"] = _make_camera_img(H, W)
 
     # fraction=0.0 -> no change
+    H, W = 128, 256
+    d["front0"] = _make_camera_img(H, W)
     old = d["front0"].clone()
     d2 = camera_loss_partial(d, {"fraction": 0.0}, rng)
     _check("C3 partial fraction=0: near-unchanged (round-trip tolerance)",
            torch.allclose(d2["front0"], old, atol=0.02))
 
-    # fraction=0.3 -> black region present
+    # fraction=0.3 -> exactly floor(H*W*3*0.3) scalar values zeroed, shape unchanged
     d3 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_ldr64=False)
-    d3["front0"] = _make_camera_img(H, W)
+    # Use a mid-gray image (no natural zeros) for exact count check
+    raw = np.full((H, W, 3), 100, dtype=np.uint8)
+    img_f = raw.astype(np.float32) / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_f = (img_f - mean) / std
+    d3["front0"] = torch.from_numpy(img_f.transpose(2, 0, 1))
     d3 = camera_loss_partial(d3, {"fraction": 0.3}, rng)
-    # Black pixels in normalized space are < -1.5
-    _check("C3 partial fraction=0.3: some near-black pixels present",
-           (d3["front0"] < -1.5).any().item(),
-           f"min={d3['front0'].min().item():.3f}")
+    # Check shape unchanged
+    _check("C3 partial: shape unchanged",
+           d3["front0"].shape == (3, H, W),
+           f"shape={d3['front0'].shape}")
+    # Check exact count zeroed in uint8 space
+    img_np = d3["front0"].cpu().numpy().transpose(1, 2, 0)  # (H,W,3)
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_uint8 = np.clip((img_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
+    n_zeroed = int(np.sum(img_uint8 == 0))
+    expected_zeroed = int(H * W * 3 * 0.3)
+    _check("C3 partial fraction=0.3: exact scalar count zeroed",
+           n_zeroed == expected_zeroed,
+           f"zeroed={n_zeroed}, expected={expected_zeroed}")
 
-    # Fraction close to 1.0 (clipped to 0.99)
+    # fraction=1.0 -> all scalar values zeroed
     d4 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_ldr64=False)
     d4["front0"] = _make_camera_img(H, W)
-    d4 = camera_loss_partial(d4, {"fraction": 0.99}, rng)
-    # Most but not all pixels should be black
-    black_frac = (d4["front0"] < -1.5).sum().item() / d4["front0"].numel()
-    _check("C3 partial fraction=0.99: most pixels black",
-           black_frac > 0.5,
-           f"black_frac={black_frac:.3f}")
+    d4 = camera_loss_partial(d4, {"fraction": 1.0}, rng)
+    img_np4 = d4["front0"].cpu().numpy().transpose(1, 2, 0)
+    img_uint8_4 = np.clip((img_np4 * std + mean) * 255.0, 0, 255).astype(np.uint8)
+    _check("C3 partial fraction=1.0: all scalar values zeroed",
+           np.all(img_uint8_4 == 0),
+           f"non_zero={(img_uint8_4 != 0).sum()}")
+    _check("C3 partial fraction=1.0: tensor NOT None (distinct from loss_complete)",
+           d4["front0"] is not None)
+    _check("C3 partial fraction=1.0: both cameras processed",
+           "front1" in d4 and d4["front0"].shape == d4["front1"].shape)
 
 
 def test_camera_loss_complete():
@@ -530,36 +593,43 @@ def test_camera_loss_complete():
            torch.all(d["front1"] < -1.5).item())
 
 
-def test_camera_loss_partial_single_region():
-    """C3: partial loss produces exactly one contiguous zeroed region (not N patches)."""
+def test_camera_loss_partial_cross_channel_independence():
+    """C3: channel-independent dropout — R/G/B of the same pixel are NOT always zeroed together."""
     rng = np.random.default_rng(215)
+    H, W = 32, 32
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                          with_ldr64=False)
-    H, W = 128, 256
-    d["front0"] = _make_camera_img(H, W)
-    d = camera_loss_partial(d, {"fraction": 0.2}, rng)
-
-    # Find black region(s) in uint8 space
-    img_np = d["front0"].cpu().numpy().transpose(1, 2, 0)
-    # De-normalize: find pixels with all channels < 0.01
+    # Create an image where every pixel has all 3 channels != 0
+    raw = np.full((H, W, 3), 100, dtype=np.uint8)  # mid-gray
+    img_f = raw.astype(np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-    img_uint8 = np.clip((img_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
-    black_mask = np.all(img_uint8 == 0, axis=2)
+    img_f = (img_f - mean) / std
+    d["front0"] = torch.from_numpy(img_f.transpose(2, 0, 1))
 
-    # Count connected components of black regions
-    try:
-        from scipy import ndimage as ndi
-        labeled, n_regions = ndi.label(black_mask)
-        _check("C3 partial: exactly 1 zeroed region",
-               n_regions == 1,
-               f"n_regions={n_regions}")
-    except ImportError:
-        # scipy not installed — skip the connected-components check
-        # Still verify at least one black pixel exists
-        _check("C3 partial: at least one black pixel (scipy N/A)",
-               black_mask.sum() > 0,
-               f"black_pixels={black_mask.sum()}")
+    # Apply loss_partial with moderate fraction so some but not all channels get zeroed
+    d = camera_loss_partial(d, {"fraction": 0.4}, rng)
+
+    # Examine in uint8 space
+    img_np = d["front0"].cpu().numpy().transpose(1, 2, 0)
+    img_uint8 = np.clip((img_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
+
+    # Count per-pixel how many channels are zero
+    zeroed_channels_per_pixel = np.sum(img_uint8 == 0, axis=2)
+
+    has_partial_zero = np.any((zeroed_channels_per_pixel > 0) & (zeroed_channels_per_pixel < 3))
+    has_full_zero = np.any(zeroed_channels_per_pixel == 3)
+    _check("C3 cross-channel: some pixels have 1 or 2 channels zeroed (independent dropout)",
+           has_partial_zero,
+           f"pixels with 1 zeroed: {np.sum(zeroed_channels_per_pixel == 1)}, "
+           f"2 zeroed: {np.sum(zeroed_channels_per_pixel == 2)}, "
+           f"3 zeroed: {np.sum(zeroed_channels_per_pixel == 3)}")
+
+    # At fraction=0.4, at least some pixels should also have all 3 channels intact
+    has_unchanged = np.any(zeroed_channels_per_pixel == 0)
+    _check("C3 cross-channel: some pixels fully intact",
+           has_unchanged,
+           f"unchanged pixels: {np.sum(zeroed_channels_per_pixel == 0)}")
 
 
 # ══════════════════════════════════════════════
@@ -663,9 +733,9 @@ def test_injector_basic():
 
     _check("INJ basic: rdr_sparse modified",
            "rdr_sparse" in d)
-    _check("INJ basic: ldr64 count reduced",
-           len(d["ldr64"]) < 500,
-           f"count={len(d['ldr64'])}")
+    _check("INJ basic: ldr64 count preserved, rows zeroed",
+           len(d["ldr64"]) == 500 and np.any(np.all(d["ldr64"] == 0, axis=1)),
+           f"count={len(d['ldr64'])}, zeroed={int(np.sum(np.all(d['ldr64'] == 0, axis=1)))}")
     _check("INJ basic: metadata injected",
            "meta" in d and "noise_injection" in d["meta"])
     meta = d["meta"]["noise_injection"]
@@ -801,6 +871,92 @@ def test_injector_should_skip():
            injector.should_skip(0, "lidar") is False)
 
 
+def test_injector_should_skip_then_call_random_mode_consistency():
+    """Regression for the RNG-desync bug (frame-deletion-verification-report.md §3.3).
+
+    Reproduces the report's exact scenario: random-mode radar frame_deletion,
+    p=0.2, seed=7, 30 frames, should_skip(i, "radar") called immediately before
+    injector(d, frame_index=i) for every i (the design doc's documented
+    "pre-check before loading" usage pattern). Before the fix, should_skip()
+    and __call__() each drew independently from the same shared per-effect
+    sub_rng, producing 5/30 mismatches in this exact configuration. After the
+    fix (should_skip() decision cache, consumed by __call__()), there must be
+    zero mismatches for every frame.
+    """
+    config = EffectConfig(
+        seed=7,
+        radar=[Effect("frame_deletion", p=1.0, params={"mode": "random", "p": 0.2})],
+    )
+    injector = NoiseInjector(config)
+
+    mismatches = 0
+    for i in range(30):
+        predicted_skip = injector.should_skip(i, "radar")
+        d = _make_dict_item(with_ldr64=False, with_camera=False, rdr_frame_idx=i)
+        d = injector(d, frame_index=i)
+        actually_deleted = d["rdr_sparse"] is None
+        if predicted_skip != actually_deleted:
+            mismatches += 1
+
+    _check("INJ should_skip+call random-mode consistency: 0/30 mismatches",
+           mismatches == 0, detail=f"got {mismatches}/30 mismatches")
+
+
+def test_injector_should_skip_cache_does_not_leak_across_frame_indices():
+    """should_skip()'s cached decision for frame N must not be reused for frame M."""
+    config = EffectConfig(
+        seed=3,
+        radar=[Effect("frame_deletion", p=1.0,
+                       params={"mode": "deterministic", "index_list": [5]})],
+    )
+    injector = NoiseInjector(config)
+
+    _check("INJ skip-cache: should_skip(5) True",
+           injector.should_skip(5, "radar") is True)
+    _check("INJ skip-cache: should_skip(6) False (independent frame)",
+           injector.should_skip(6, "radar") is False)
+
+    d5 = _make_dict_item(with_ldr64=False, with_camera=False, rdr_frame_idx=5)
+    d5 = injector(d5, frame_index=5)
+    _check("INJ skip-cache: __call__ frame 5 deletes (matches cached decision)",
+           d5["rdr_sparse"] is None)
+
+    d6 = _make_dict_item(with_ldr64=False, with_camera=False, rdr_frame_idx=6)
+    d6 = injector(d6, frame_index=6)
+    _check("INJ skip-cache: __call__ frame 6 does not delete (matches cached decision)",
+           d6["rdr_sparse"] is not None)
+
+
+def test_injector_call_only_unaffected_by_skip_cache():
+    """__call__() callers who never call should_skip() get unchanged behaviour.
+
+    The skip cache is only ever populated by should_skip(); a caller that only
+    ever uses __call__() must see identical draws/decisions with and without
+    the fix in place (the fix must be a strict no-op on this path).
+    """
+    config = EffectConfig(
+        seed=11,
+        radar=[Effect("frame_deletion", p=1.0, params={"mode": "random", "p": 0.3})],
+    )
+    injector_a = NoiseInjector(config)
+    injector_b = NoiseInjector(config)
+
+    results_a, results_b = [], []
+    for i in range(20):
+        da = _make_dict_item(with_ldr64=False, with_camera=False, rdr_frame_idx=i)
+        da = injector_a(da, frame_index=i)
+        results_a.append(da["rdr_sparse"] is None)
+
+        db = _make_dict_item(with_ldr64=False, with_camera=False, rdr_frame_idx=i)
+        db = injector_b(db, frame_index=i)
+        results_b.append(db["rdr_sparse"] is None)
+
+    _check("INJ call-only path: two fresh injectors (same seed, never call should_skip) agree",
+           results_a == results_b)
+    _check("INJ call-only path: skip cache stays empty",
+           len(injector_a._skip_cache) == 0)
+
+
 def test_injector_legacy_effect_rejected():
     """Legacy effect names raise ValueError (not in active registries)."""
     config = EffectConfig(
@@ -881,7 +1037,7 @@ if __name__ == "__main__":
     test_camera_gaussian_noise()
     test_camera_loss_partial()
     test_camera_loss_complete()
-    test_camera_loss_partial_single_region()
+    test_camera_loss_partial_cross_channel_independence()
 
     # Registries
     test_registry_counts()
@@ -898,6 +1054,9 @@ if __name__ == "__main__":
     test_injector_seed_determinism()
     test_injector_no_corruption_on_empty_keys()
     test_injector_should_skip()
+    test_injector_should_skip_then_call_random_mode_consistency()
+    test_injector_should_skip_cache_does_not_leak_across_frame_indices()
+    test_injector_call_only_unaffected_by_skip_cache()
     test_injector_legacy_effect_rejected()
     test_injector_frame_deletion_index_list()
     test_injector_has_key_skips_none()

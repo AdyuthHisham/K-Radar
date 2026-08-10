@@ -1,0 +1,23 @@
+# Noise Injection Config — Smoke Test (Task 5)
+# 3 effects across 3 modalities:
+#   radar:    frame_deletion (deterministic, every 10th frame)
+#   lidar:    loss_partial (fraction=0.3)
+#   camera:   gaussian_noise (sigma=25)
+---
+seed: 42
+radar:
+  - name: frame_deletion
+    p: 1.0
+    params:
+      mode: deterministic
+      interval: 10
+lidar:
+  - name: loss_partial
+    p: 1.0
+    params:
+      fraction: 0.3
+camera:
+  - name: gaussian_noise
+    p: 1.0
+    params:
+      sigma: 25

@@ -1,0 +1,190 @@
+{
+  "effect_parameters.yaml": {
+    "size": 586,
+    "sha256_16": "58f0031dee0e536a"
+  },
+  "frame_seq001_rdr033/camera/camera_clean.png": {
+    "size": 1319586,
+    "sha256_16": "0553c80b2bb310e6"
+  },
+  "frame_seq001_rdr033/camera/camera_frame_deletion.png": {
+    "size": 10901,
+    "sha256_16": "86f9fa1352aa1e8a"
+  },
+  "frame_seq001_rdr033/camera/camera_gaussian_noise.png": {
+    "size": 5039470,
+    "sha256_16": "858fe456dcc03f5d"
+  },
+  "frame_seq001_rdr033/camera/camera_loss_complete.png": {
+    "size": 10851,
+    "sha256_16": "bf34f64e2ae03b23"
+  },
+  "frame_seq001_rdr033/camera/camera_loss_partial.png": {
+    "size": 944180,
+    "sha256_16": "716dc812fc483ff5"
+  },
+  "frame_seq001_rdr033/lidar/lidar_clean.png": {
+    "size": 60229,
+    "sha256_16": "89b58e023bb89efd"
+  },
+  "frame_seq001_rdr033/lidar/lidar_frame_deletion.png": {
+    "size": 13631,
+    "sha256_16": "9d44acc32133d1aa"
+  },
+  "frame_seq001_rdr033/lidar/lidar_gaussian_noise.png": {
+    "size": 50241,
+    "sha256_16": "59aba9fa6e0627d5"
+  },
+  "frame_seq001_rdr033/lidar/lidar_loss_complete.png": {
+    "size": 13552,
+    "sha256_16": "6535112b01bffa42"
+  },
+  "frame_seq001_rdr033/lidar/lidar_loss_partial.png": {
+    "size": 46928,
+    "sha256_16": "5f8b970c4ff0a779"
+  },
+  "frame_seq001_rdr033/radar/radar_clean.png": {
+    "size": 65355,
+    "sha256_16": "11efec8bf14ffec8"
+  },
+  "frame_seq001_rdr033/radar/radar_frame_deletion.png": {
+    "size": 13631,
+    "sha256_16": "9d44acc32133d1aa"
+  },
+  "frame_seq001_rdr033/radar/radar_loss_complete.png": {
+    "size": 13552,
+    "sha256_16": "6535112b01bffa42"
+  },
+  "frame_seq001_rdr033/radar/radar_loss_partial.png": {
+    "size": 69620,
+    "sha256_16": "6b37d25b8787c97e"
+  },
+  "frame_seq001_rdr033/radar/radar_noise_induced_shifts.png": {
+    "size": 99813,
+    "sha256_16": "ef82251e92abe421"
+  },
+  "frame_seq021_rdr015/camera/camera_clean.png": {
+    "size": 1731877,
+    "sha256_16": "95114179daab5aab"
+  },
+  "frame_seq021_rdr015/camera/camera_frame_deletion.png": {
+    "size": 10843,
+    "sha256_16": "53b53dd35661e16b"
+  },
+  "frame_seq021_rdr015/camera/camera_gaussian_noise.png": {
+    "size": 5182331,
+    "sha256_16": "85c673234e569db0"
+  },
+  "frame_seq021_rdr015/camera/camera_loss_complete.png": {
+    "size": 10793,
+    "sha256_16": "2ac3b7b3500a25d7"
+  },
+  "frame_seq021_rdr015/camera/camera_loss_partial.png": {
+    "size": 1196485,
+    "sha256_16": "c132cf48d89bdf49"
+  },
+  "frame_seq021_rdr015/lidar/lidar_clean.png": {
+    "size": 46378,
+    "sha256_16": "40d94830e6c54fd3"
+  },
+  "frame_seq021_rdr015/lidar/lidar_frame_deletion.png": {
+    "size": 13542,
+    "sha256_16": "324aeb7038d94d8d"
+  },
+  "frame_seq021_rdr015/lidar/lidar_gaussian_noise.png": {
+    "size": 43182,
+    "sha256_16": "4a843dfdd111ca40"
+  },
+  "frame_seq021_rdr015/lidar/lidar_loss_complete.png": {
+    "size": 13463,
+    "sha256_16": "3a6637675a21404e"
+  },
+  "frame_seq021_rdr015/lidar/lidar_loss_partial.png": {
+    "size": 40826,
+    "sha256_16": "6576eec7bc8d0659"
+  },
+  "frame_seq021_rdr015/radar/radar_clean.png": {
+    "size": 67167,
+    "sha256_16": "699a4f434c7937fe"
+  },
+  "frame_seq021_rdr015/radar/radar_frame_deletion.png": {
+    "size": 13542,
+    "sha256_16": "324aeb7038d94d8d"
+  },
+  "frame_seq021_rdr015/radar/radar_loss_complete.png": {
+    "size": 13463,
+    "sha256_16": "3a6637675a21404e"
+  },
+  "frame_seq021_rdr015/radar/radar_loss_partial.png": {
+    "size": 73817,
+    "sha256_16": "d841907f1e481ec1"
+  },
+  "frame_seq021_rdr015/radar/radar_noise_induced_shifts.png": {
+    "size": 99284,
+    "sha256_16": "af2fd0a5d0897305"
+  },
+  "frame_seq048_rdr035/camera/camera_clean.png": {
+    "size": 1709658,
+    "sha256_16": "5498a954434b29d7"
+  },
+  "frame_seq048_rdr035/camera/camera_frame_deletion.png": {
+    "size": 10947,
+    "sha256_16": "4ddc2d33ea5675a5"
+  },
+  "frame_seq048_rdr035/camera/camera_gaussian_noise.png": {
+    "size": 5249233,
+    "sha256_16": "ae78a3ece332935c"
+  },
+  "frame_seq048_rdr035/camera/camera_loss_complete.png": {
+    "size": 10899,
+    "sha256_16": "eb0324bde603287f"
+  },
+  "frame_seq048_rdr035/camera/camera_loss_partial.png": {
+    "size": 1215685,
+    "sha256_16": "79527b34248b90cf"
+  },
+  "frame_seq048_rdr035/lidar/lidar_clean.png": {
+    "size": 63585,
+    "sha256_16": "f085db46bbfa7376"
+  },
+  "frame_seq048_rdr035/lidar/lidar_frame_deletion.png": {
+    "size": 13663,
+    "sha256_16": "c32cc9bb768f5d5b"
+  },
+  "frame_seq048_rdr035/lidar/lidar_gaussian_noise.png": {
+    "size": 49068,
+    "sha256_16": "d266f524fd989dab"
+  },
+  "frame_seq048_rdr035/lidar/lidar_loss_complete.png": {
+    "size": 13581,
+    "sha256_16": "441697a876558bec"
+  },
+  "frame_seq048_rdr035/lidar/lidar_loss_partial.png": {
+    "size": 46754,
+    "sha256_16": "9752eb8bdd9d6b4e"
+  },
+  "frame_seq048_rdr035/radar/radar_clean.png": {
+    "size": 57740,
+    "sha256_16": "6856e26b585a6b71"
+  },
+  "frame_seq048_rdr035/radar/radar_frame_deletion.png": {
+    "size": 13663,
+    "sha256_16": "c32cc9bb768f5d5b"
+  },
+  "frame_seq048_rdr035/radar/radar_loss_complete.png": {
+    "size": 13581,
+    "sha256_16": "441697a876558bec"
+  },
+  "frame_seq048_rdr035/radar/radar_loss_partial.png": {
+    "size": 59255,
+    "sha256_16": "db062141734fa9f4"
+  },
+  "frame_seq048_rdr035/radar/radar_noise_induced_shifts.png": {
+    "size": 76775,
+    "sha256_16": "c981883157716109"
+  },
+  "index.html": {
+    "size": 10640,
+    "sha256_16": "c427d3ea8c99284f"
+  }
+}
