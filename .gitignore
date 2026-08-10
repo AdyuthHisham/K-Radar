@@ -8,3 +8,6 @@ pretrained/
 revise_label/
 
 *.pyc
+.claude/worktrees/
+
+*.png
