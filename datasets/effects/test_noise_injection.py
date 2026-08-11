@@ -131,6 +131,38 @@ def _make_dict_item(with_rdr_sparse=True, with_rdr_polar=True, with_pc100p=True,
     return item
 
 
+def _make_kradar_dict_item(rdr="00182", ldr64="00150", camf="00449",
+                           ldr128="00150", camr="00451",
+                           tstamp="1643292961.606203716"):
+    """A dict_item whose meta['idx'] matches the REAL K-Radar dataset exactly.
+
+    _make_dict_item above keys meta['idx'] with the injector's own modality
+    names ('rdr'/'ldr'/'cam'), which is why the suite could not catch the bug
+    where deterministic frame_deletion silently never fired for lidar or
+    camera: the dataset actually writes
+
+        dict_idx = dict(rdr=rdr, ldr64=ldr64, camf=camf,
+                        ldr128=ldr128, camr=camr, tstamp=tstamp)
+
+    (kradar_fusion_v1_0.py:442, and identically in kradar_detection_v2_0.py:201
+    and kradar_detection_v1_1.py:154). Only 'rdr' coincides. Values are
+    zero-padded STRINGS, because they come from a split('_') of the label
+    header -- K-Radar uses them for path building, never arithmetic.
+
+    Defaults are a real frame captured from the Alvis sensor dumps.
+    """
+    item = {"meta": {
+        "seq": "1",
+        "idx": dict(rdr=rdr, ldr64=ldr64, camf=camf,
+                    ldr128=ldr128, camr=camr, tstamp=tstamp),
+    }}
+    item["rdr_sparse"] = _make_rdr_sparse(200, 5)
+    item["rdr_polar_3d"] = _make_rdr_polar_3d()
+    item["ldr64"] = _make_ldr64(500)
+    item["front0"] = _make_camera_img()
+    return item
+
+
 # ── Test results accumulator ──
 
 _pass_count = 0
@@ -767,6 +799,97 @@ def test_injector_frame_deletion_deterministic():
            d5["rdr_sparse"] is not None)
 
 
+def test_kradar_meta_idx_resolution():
+    """_get_modality_idx resolves against the real K-Radar meta['idx'] keys.
+
+    Regression for the bug where lidar/camera resolved to None because the
+    lookup used the injector's modality names rather than the dataset's
+    ('ldr64', 'camf'). Both the short names the effect functions pass and the
+    long names used in configs must resolve.
+    """
+    get_idx = _noise_mod._get_modality_idx
+    d = _make_kradar_dict_item()
+    for name, expected in [("rdr", 182), ("ldr", 150), ("cam", 449),
+                           ("radar", 182), ("lidar", 150), ("camera", 449)]:
+        _check(f"KRADAR meta idx: '{name}' resolves to {expected}",
+               get_idx(d, name) == expected,
+               f"got {get_idx(d, name)!r}")
+
+    # Zero-padded strings must be coerced, since frame_deletion does modulo.
+    _check("KRADAR meta idx: value is int, not str",
+           isinstance(get_idx(d, "lidar"), int))
+    # Absent / unparseable indices degrade to None rather than raising.
+    _check("KRADAR meta idx: missing key -> None",
+           get_idx({"meta": {"idx": {}}}, "lidar") is None)
+    _check("KRADAR meta idx: non-numeric -> None",
+           get_idx({"meta": {"idx": {"ldr64": "abc"}}}, "lidar") is None)
+
+
+def test_kradar_frame_deletion_fires_all_modalities():
+    """Deterministic frame_deletion fires for every modality on real meta keys.
+
+    This is the test that would have caught the original bug: with the old
+    lookup, lidar and camera silently no-opped here while radar worked, and
+    the run looked healthy.
+    """
+    params = {"mode": "deterministic", "interval": 2}
+    rng = np.random.default_rng(0)
+
+    # ldr64 '00150' -> 150, even -> deleted. camf '00449' -> 449, odd -> kept.
+    d = _make_kradar_dict_item(rdr="00182", ldr64="00150", camf="00449")
+    lidar_frame_deletion(d, params, rng)
+    _check("KRADAR frame_del: lidar FIRES on even ldr64 index (150)",
+           d["ldr64"] is None)
+
+    d2 = _make_kradar_dict_item(rdr="00182", ldr64="00150", camf="00449")
+    radar_frame_deletion(d2, params, rng)
+    _check("KRADAR frame_del: radar fires on even rdr index (182)",
+           d2["rdr_sparse"] is None)
+
+    d3 = _make_kradar_dict_item(camf="00448")  # even -> camera blackout
+    before = d3["front0"].clone()
+    camera_frame_deletion(d3, params, rng)
+    _check("KRADAR frame_del: camera FIRES on even camf index (448)",
+           not torch.equal(d3["front0"], before))
+
+    # Odd indices must be left alone -- proves the gate is real, not always-on.
+    d4 = _make_kradar_dict_item(rdr="00183", ldr64="00151", camf="00449")
+    cam_before = d4["front0"].clone()
+    radar_frame_deletion(d4, params, rng)
+    lidar_frame_deletion(d4, params, rng)
+    camera_frame_deletion(d4, params, rng)
+    _check("KRADAR frame_del: odd indices leave radar untouched",
+           d4["rdr_sparse"] is not None)
+    _check("KRADAR frame_del: odd indices leave lidar untouched",
+           d4["ldr64"] is not None)
+    _check("KRADAR frame_del: odd indices leave camera untouched",
+           torch.equal(d4["front0"], cam_before))
+
+
+def test_kradar_injector_end_to_end():
+    """Through NoiseInjector, on real meta keys, across the 6 smoke-run frames.
+
+    interval=2 over the actual ldr64 indices of the Alvis 6-frame scope
+    (150,151,152,122,123,124) must delete exactly the 4 even ones.
+    """
+    config = EffectConfig(
+        seed=42,
+        lidar=[Effect("frame_deletion", p=1.0,
+                      params={"mode": "deterministic", "interval": 2})],
+    )
+    injector = NoiseInjector(config)
+    real_ldr_idx = ["00150", "00151", "00152", "00122", "00123", "00124"]
+    deleted = []
+    for i, ldr in enumerate(real_ldr_idx):
+        d = injector(_make_kradar_dict_item(ldr64=ldr), frame_index=i)
+        deleted.append(d["ldr64"] is None)
+    _check("KRADAR injector: 4 of 6 smoke frames deleted",
+           sum(deleted) == 4, f"deleted={deleted}")
+    _check("KRADAR injector: exactly the even-index frames deleted",
+           deleted == [True, False, True, True, False, True],
+           f"got {deleted}")
+
+
 def test_injector_prob_zero():
     """p=0.0 -> no effects applied."""
     config = EffectConfig(
@@ -1060,6 +1183,12 @@ if __name__ == "__main__":
     test_injector_legacy_effect_rejected()
     test_injector_frame_deletion_index_list()
     test_injector_has_key_skips_none()
+
+    # Real K-Radar meta['idx'] key naming (regression for the silent
+    # frame_deletion no-op on lidar / camera)
+    test_kradar_meta_idx_resolution()
+    test_kradar_frame_deletion_fires_all_modalities()
+    test_kradar_injector_end_to_end()
 
     success = _print_results()
     sys.exit(0 if success else 1)
