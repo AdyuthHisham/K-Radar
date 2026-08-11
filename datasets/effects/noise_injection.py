@@ -65,9 +65,15 @@ def _set_none(d: dict, keys: list[str]) -> None:
 # never fired for lidar or camera (frame_index came back None, and
 # _frame_deletion_check treats None as "don't delete"). Candidates are tried in
 # order and the first present key wins.
+# Keyed by BOTH the short sensor names the effect functions pass ('rdr'/'ldr'/
+# 'cam') and the long modality names used in configs and registries
+# ('radar'/'lidar'/'camera'), so either spelling resolves.
 _MODALITY_IDX_KEYS: dict[str, tuple[str, ...]] = {
+    "rdr":    ("rdr", "radar"),
     "radar":  ("rdr", "radar"),
+    "ldr":    ("ldr64", "ldr", "ldr128", "lidar"),
     "lidar":  ("ldr64", "ldr", "ldr128", "lidar"),
+    "cam":    ("camf", "cam", "camr", "camera"),
     "camera": ("camf", "cam", "camr", "camera"),
 }
 
