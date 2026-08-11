@@ -1,0 +1,13 @@
+# Single-sensor failure: RADAR alive but returning all-zero readings.
+# loss_partial at fraction 1.0 zeroes every row in place and preserves the row
+# count, so the sparse backbone still receives voxels and the run completes.
+# Purely data-level -- no model modification -- and unlike loss_complete it
+# yields actual detections to measure.
+seed: 42
+radar:
+  - name: loss_partial
+    p: 1.0
+    params:
+      fraction: 1.0
+lidar: []
+camera: []

@@ -1,0 +1,9 @@
+# Single-sensor failure: LIDAR dead (delivers nothing).
+# See radar_dead.yml. Confirmed to abort in spconv (job 6929863).
+seed: 42
+radar: []
+lidar:
+  - name: loss_complete
+    p: 1.0
+    params: {}
+camera: []

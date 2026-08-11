@@ -46,6 +46,11 @@ if __name__ == '__main__':
                         help='How a blacked-out modality (frame_deletion / loss_complete) '
                              'is represented to the model. Only used with --noise-config. '
                              'See datasets/effects/eval_wrapper.py for the rationale.')
+    parser.add_argument('--dump-sensors', type=str, default=None,
+                        help='Directory to write each frame\'s corrupted sensor data to '
+                             '(point clouds as .npy, camera images as .png, plus a _meta.txt), '
+                             'with clean copies alongside for comparison. Only used with '
+                             '--noise-config.')
 
     args = parser.parse_args()
 
@@ -65,8 +70,12 @@ if __name__ == '__main__':
               f'(seed={injector.config.seed}, blackout_policy={args.blackout_policy}, '
               f'{injector._metadata()})')
         pline.dataset_test = NoiseInjectedDataset(
-            pline.dataset_test, injector, blackout_policy=args.blackout_policy
+            pline.dataset_test, injector,
+            blackout_policy=args.blackout_policy,
+            dump_dir=args.dump_sensors,
         )
+        if args.dump_sensors:
+            print(f'[noise-injection] Dumping per-frame sensor data to {args.dump_sensors}')
         if args.blackout_policy == 'zero_feature':
             n_hooks = install_blackout_hooks(pline.network)
             print(f'[noise-injection] Installed {n_hooks} blackout forward hooks')

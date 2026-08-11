@@ -1,0 +1,11 @@
+# Single-sensor failure: CAMERA dead.
+# camera loss_complete writes a black-image tensor (normalized (0-mean)/std),
+# never None, so this never reaches the blackout-policy substitution and runs
+# end to end regardless of --blackout-policy.
+seed: 42
+radar: []
+lidar: []
+camera:
+  - name: loss_complete
+    p: 1.0
+    params: {}

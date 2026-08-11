@@ -1,0 +1,13 @@
+# Single-sensor failure: RADAR dead (delivers nothing).
+# loss_complete sets rdr_sparse/rdr_polar_3d to None; --blackout-policy empty
+# turns that into a (0, C) array -- a genuinely empty frame, no model-side
+# compensation. Expected to fail in the RTNH sparse-conv backbone (zero voxels
+# -> zero-block CUDA launch); that failure is the result, not a bug to fix.
+# LiDAR and camera left clean so the effect is attributable to radar alone.
+seed: 42
+radar:
+  - name: loss_complete
+    p: 1.0
+    params: {}
+lidar: []
+camera: []

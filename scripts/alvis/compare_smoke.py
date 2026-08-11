@@ -37,6 +37,12 @@ def _parse_kitti_pred(path: str) -> list[dict]:
     """Parse one KITTI-format prediction file.
 
     Columns: class truncated occluded alpha bbox(4) dims(3) loc(3) rotation_y [score]
+
+    The pipeline writes a single placeholder row ``dummy -1 -1 0 0 ...`` for a
+    frame with no detections above the confidence threshold, so the KITTI
+    evaluator still has a file to read. Those rows are not detections and are
+    dropped here — counting them as boxes would report an empty frame as
+    "1 box, score 0.000".
     """
     boxes = []
     with open(path) as f:
@@ -45,6 +51,8 @@ def _parse_kitti_pred(path: str) -> list[dict]:
             if len(parts) < 15:
                 continue
             cls = parts[0]
+            if cls == "dummy":
+                continue
             loc = tuple(float(x) for x in parts[11:14])  # x, y, z (camera frame)
             score = float(parts[15]) if len(parts) > 15 else None
             boxes.append({"cls": cls, "loc": loc, "score": score})
@@ -99,10 +107,23 @@ def main() -> None:
     for name, frames in data.items():
         if frames is None:
             continue
+        total = 0
         for frame_id, boxes in sorted(frames.items()):
+            total += len(boxes)
             scores = [b["score"] for b in boxes if b["score"] is not None]
+            if not boxes:
+                print(f"  [{name:16s}] frame {frame_id}: NO DETECTIONS")
+                continue
             mean_score = sum(scores) / len(scores) if scores else float("nan")
-            print(f"  [{name:16s}] frame {frame_id}: {len(boxes)} box(es), mean score {mean_score:.3f}")
+            by_cls = defaultdict(int)
+            for b in boxes:
+                by_cls[b["cls"]] += 1
+            cls_str = ", ".join(f"{c}x{n}" for c, n in sorted(by_cls.items()))
+            print(
+                f"  [{name:16s}] frame {frame_id}: {len(boxes)} box(es) [{cls_str}], "
+                f"mean score {mean_score:.3f}"
+            )
+        print(f"  [{name:16s}] TOTAL detections across {len(frames)} frame(s): {total}")
 
     print(f"\n=== displacement vs. baseline '{args.baseline}' ===")
     for name, frames in data.items():
@@ -119,18 +140,28 @@ def main() -> None:
                 f"  [{name:16s}] frame {frame_id}: clean={n_clean} boxes, "
                 f"this={n_other} boxes, mean matched displacement={disp_str}"
             )
+        n_clean_total = sum(len(b) for b in baseline.values())
+        n_this_total = sum(len(b) for b in frames.values())
+        print(
+            f"  [{name:16s}] detections: clean={n_clean_total} -> this={n_this_total} "
+            f"({n_this_total - n_clean_total:+d})"
+        )
         if all_disp:
             print(
                 f"  [{name:16s}] OVERALL mean displacement over {len(all_disp)} matched box(es): "
                 f"{sum(all_disp) / len(all_disp):.3f} m"
             )
-            if sum(all_disp) / len(all_disp) < 1e-6:
+            if sum(all_disp) / len(all_disp) < 1e-6 and n_this_total == n_clean_total:
                 print(
-                    f"  [{name:16s}] WARNING: zero displacement — noise injection may not have "
-                    f"fired. Check the job log for the '[noise-injection] Loaded config' banner."
+                    f"  [{name:16s}] WARNING: zero displacement and identical box count — noise "
+                    f"injection may not have fired. Check the job log for the "
+                    f"'[noise-injection] Loaded config' banner."
                 )
         else:
-            print(f"  [{name:16s}] no matched boxes across any frame")
+            print(
+                f"  [{name:16s}] no matched boxes across any frame "
+                f"(detections suppressed rather than displaced)"
+            )
 
 
 if __name__ == "__main__":

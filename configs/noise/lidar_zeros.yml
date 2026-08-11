@@ -1,0 +1,10 @@
+# Single-sensor failure: LIDAR alive but returning all-zero readings.
+# See radar_zeros.yml.
+seed: 42
+radar: []
+lidar:
+  - name: loss_partial
+    p: 1.0
+    params:
+      fraction: 1.0
+camera: []

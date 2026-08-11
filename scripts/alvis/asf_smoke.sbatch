@@ -76,7 +76,11 @@ BINDS="${BINDS#,}"
 
 NOISE_ARGS=""
 if [ -n "$NOISE_CFG" ]; then
-  NOISE_ARGS="--noise-config /opt/K-Radar/configs/noise/$NOISE_CFG --blackout-policy $BLACKOUT_POLICY"
+  # Sensor dumps land next to the predictions so each condition keeps its own
+  # corrupted images/point clouds (with clean copies) for visual inspection.
+  NOISE_ARGS="--noise-config /opt/K-Radar/configs/noise/$NOISE_CFG"
+  NOISE_ARGS="$NOISE_ARGS --blackout-policy $BLACKOUT_POLICY"
+  NOISE_ARGS="$NOISE_ARGS --dump-sensors /opt/K-Radar/logs/sensor_dump"
 fi
 
 echo "=== condition: $OUT_NAME  noise-config: ${NOISE_CFG:-<none, clean run>}  blackout-policy: $BLACKOUT_POLICY ==="
@@ -104,6 +108,7 @@ set -e
 echo '--- prediction files written ---'
 NPRED=$(find "$OUT" -path '*all/preds/*.txt' | wc -l)
 echo "--- count: $NPRED ---"
+echo "--- sensor dump: $(find "$OUT/sensor_dump" -type f 2>/dev/null | wc -l) file(s) ---"
 echo '--- AP results (complete_results.txt, not meaningful on 6 frames — see compare_smoke.py) ---'
 find "$OUT" -name 'complete_results.txt' -exec echo {} \; -exec cat {} \;
 
