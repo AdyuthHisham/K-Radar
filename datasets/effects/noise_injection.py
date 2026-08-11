@@ -58,11 +58,36 @@ def _set_none(d: dict, keys: list[str]) -> None:
             d[k] = None
 
 
+# dict_item['meta']['idx'] is keyed by the dataset's own sensor names, which do
+# not match the injector's modality names: KRadarFusion_v1_0 writes
+# {'rdr', 'ldr64', 'ldr128', 'camf', 'camr', 'tstamp'}. Only 'rdr' happens to
+# coincide, so before this mapping existed deterministic frame_deletion silently
+# never fired for lidar or camera (frame_index came back None, and
+# _frame_deletion_check treats None as "don't delete"). Candidates are tried in
+# order and the first present key wins.
+_MODALITY_IDX_KEYS: dict[str, tuple[str, ...]] = {
+    "radar":  ("rdr", "radar"),
+    "lidar":  ("ldr64", "ldr", "ldr128", "lidar"),
+    "camera": ("camf", "cam", "camr", "camera"),
+}
+
+
 def _get_modality_idx(d: dict, modality: str) -> int | None:
-    """Extract the frame index for a modality from dict_item['meta']['idx']."""
-    meta = d.get("meta", {})
-    idx_dict = meta.get("idx", {})
-    return idx_dict.get(modality, None)
+    """Extract the frame index for a modality from dict_item['meta']['idx'].
+
+    Returns an int, or None when no index is available for this modality (in
+    which case deterministic frame_deletion declines to delete). Values in
+    meta['idx'] are zero-padded strings such as '00150', so they are coerced.
+    """
+    idx_dict = d.get("meta", {}).get("idx", {})
+    for key in _MODALITY_IDX_KEYS.get(modality, (modality,)):
+        if key in idx_dict:
+            value = idx_dict[key]
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    return None
 
 
 # ══════════════════════════════════════════════
