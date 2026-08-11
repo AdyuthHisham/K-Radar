@@ -32,8 +32,13 @@ EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "each radar detection displaced by N(0, 2.0 m); shape preserved"),
         ("loss_partial", {"fraction": 0.5},
          "half the radar detections zeroed in place; row count preserved"),
+        # NOTE: loss_complete is redundant with frame_deletion at interval 1 --
+        # both call _set_none unconditionally vs. behind a frame gate. See
+        # docs/vAIlt/04_Design/Noise_Taxonomy.md:19, which excludes it from the
+        # canonical taxonomy. Kept generated for back-compat; prefer
+        # frame_deletion with `interval: 1` for total sensor failure.
         ("loss_complete", {},
-         "radar delivers nothing; sets rdr_sparse to None -> blackout policy applies"),
+         "radar delivers nothing; REDUNDANT with frame_deletion interval:1"),
     ],
     "lidar": [
         ("frame_deletion", {"mode": "deterministic", "interval": 2},

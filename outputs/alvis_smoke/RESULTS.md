@@ -33,6 +33,28 @@ Machine-readable: `corruption_summary.csv`. Per-frame corrupted sensor data
 (point clouds `.npy`, camera `.png`, plus clean copies and a `_meta.txt`) is under
 each condition's `sensor_dump/`.
 
+## Note: the three `loss_complete` rows are redundant
+
+`Noise_Taxonomy.md:19` records the design decision that `loss_complete` is **not**
+a separate corruption path — frame deletion already produces the same condition.
+That decision never reached the code, which still registers `loss_complete` for
+all three modalities, so this sweep ran it. It should not have.
+
+The two are mechanically the same operation with different gating:
+`loss_complete` calls `_set_none(...)` (radar/lidar) or writes the black tensor
+(camera) unconditionally; `frame_deletion` does exactly that behind a frame-index
+gate. `frame_deletion` with `interval: 1` reproduces `loss_complete` exactly.
+
+The runs confirm it: radar and LiDAR `loss_complete` and `frame_deletion` abort
+identically, and camera differs only by rate (6/6 frames dead → 18 detections vs
+3/6 dead → 19).
+
+**The canonical taxonomy is 9 effects, not 12** — frame_deletion,
+gaussian_noise / noise_induced_shifts, and loss_partial per modality — with total
+sensor failure expressed as `frame_deletion` at `interval: 1`. The
+`loss_complete` rows below are retained only as corroboration of that
+equivalence.
+
 ## Sensitivity ranking
 
 **LiDAR ≫ radar > camera.** LiDAR is by far the dominant modality: modest
