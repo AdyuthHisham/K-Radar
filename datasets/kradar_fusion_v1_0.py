@@ -145,6 +145,20 @@ class KRadarFusion_v1_0(Dataset):
                 self.item[temp_key] = False
         
         self.portion = self.cfg.get('portion', None)
+        # Optional cap on frames kept per sequence. Leave empty/None to use the
+        # full split. Handy for a quick smoke run on a couple of frames per seq.
+        self.max_per_seq = self.cfg.get('max_per_seq', None)
+        # How to choose which frames to keep when max_per_seq is set:
+        #   'most_objects' -> the N frames with the largest object count in each
+        #                     sequence (a denser, more useful smoke set)
+        #   'first'        -> the first N labelled frames of each sequence
+        # Ignored when max_per_seq is empty.
+        self.frame_select = self.cfg.get('frame_select', 'first')
+        # Optional fully explicit frame choice: a map seq -> list of label file
+        # names to keep, e.g. {'1': ['00100_00068.txt', ...]}. When set it takes
+        # precedence over max_per_seq / frame_select, so the exact frames are
+        # fixed and reproducible.
+        self.frames = self.cfg.get('frames', None)
 
         self.list_dict_item = self.load_dict_item(self.cfg.path_data, split)
         if cfg_from_yaml:
@@ -314,6 +328,65 @@ class KRadarFusion_v1_0(Dataset):
         # Filter unavailable frames (frames wo objects) (only)
         if self.label.remove_0_obj:
             list_dict_item = list(filter(lambda item: item['meta']['num_obj']>0, list_dict_item))
+
+        # Explicit frame choice wins over everything else: keep exactly the
+        # label files named per sequence, in the given order. This is what makes
+        # a test set fully reproducible (fixed sequences and fixed frames).
+        if self.frames is not None:
+            wanted = {str(s): list(names) for s, names in self.frames.items()}
+            picked = []
+            for seq, names in wanted.items():
+                by_name = {}
+                for item in list_dict_item:
+                    if item['meta']['seq'] != seq:
+                        continue
+                    fname = osp.basename(item['meta']['label_' + self.label_version])
+                    by_name[fname] = item
+                for name in names:
+                    if name in by_name:
+                        picked.append(by_name[name])
+                    else:
+                        print(f'* Frame select: {seq}/{name} not found in split, skipped')
+            return picked
+
+        # Otherwise keep at most max_per_seq frames per sequence. With
+        # frame_select 'most_objects' we take the densest frames (largest object
+        # count); with 'first' we take the first N labelled frames in order.
+        if self.max_per_seq is not None:
+            if self.frame_select == 'most_objects':
+                by_seq = dict()
+                for item in list_dict_item:
+                    by_seq.setdefault(item['meta']['seq'], []).append(item)
+                kept = []
+                for seq in sorted(by_seq.keys(), key=lambda s: int(s)):
+                    items = by_seq[seq]
+                    # Sort by object count (descending), then by label name so
+                    # ties are resolved the same way every run.
+                    items = sorted(
+                        items,
+                        key=lambda it: (
+                            -it['meta']['num_obj'],
+                            osp.basename(it['meta']['label_' + self.label_version]),
+                        ),
+                    )
+                    top = items[:self.max_per_seq]
+                    names = [osp.basename(it['meta']['label_' + self.label_version])
+                             for it in top]
+                    counts = [it['meta']['num_obj'] for it in top]
+                    print(f'* Frame select (most_objects) seq {seq}: '
+                          f'{list(zip(names, counts))}')
+                    kept.extend(top)
+                list_dict_item = kept
+            else:
+                kept = []
+                count_per_seq = dict()
+                for item in list_dict_item:
+                    seq = item['meta']['seq']
+                    n = count_per_seq.get(seq, 0)
+                    if n < self.max_per_seq:
+                        kept.append(item)
+                        count_per_seq[seq] = n + 1
+                list_dict_item = kept
 
         return list_dict_item
     

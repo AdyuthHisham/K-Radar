@@ -7,14 +7,31 @@ from scipy.interpolate import interp1d
 
 _rotate_iou_gpu_eval = None
 
-def rotate_iou_gpu_eval(*args, **kwargs):
-    global _rotate_iou_gpu_eval
-    if _rotate_iou_gpu_eval is None:
+def _load_rotate_iou():
+    # The rotated-box IoU used to come from a Numba @cuda.jit kernel in
+    # nms_gpu.py. On a host whose Numba/CUDA driver does not match, that kernel
+    # segfaults the whole process the moment nms_gpu is imported (the crash is a
+    # hard SIGSEGV, so it cannot be caught with try/except). To keep the AP step
+    # reliable we use the CPU rotated-IoU by default, which gives the same
+    # result. Set KRADAR_EVAL_GPU_IOU=1 to opt back into the GPU kernel on a
+    # node where it is known to compile.
+    import os as _os
+    if _os.environ.get('KRADAR_EVAL_GPU_IOU', '0') == '1':
         try:
             from nms_gpu import rotate_iou_gpu_eval as _fn
         except ImportError:
             from utils.kitti_eval.nms_gpu import rotate_iou_gpu_eval as _fn
-        _rotate_iou_gpu_eval = _fn
+        return _fn
+    try:
+        from rotate_iou_cpu import rotate_iou_gpu_eval as _cpu
+    except ImportError:
+        from utils.kitti_eval.rotate_iou_cpu import rotate_iou_gpu_eval as _cpu
+    return _cpu
+
+def rotate_iou_gpu_eval(*args, **kwargs):
+    global _rotate_iou_gpu_eval
+    if _rotate_iou_gpu_eval is None:
+        _rotate_iou_gpu_eval = _load_rotate_iou()
     return _rotate_iou_gpu_eval(*args, **kwargs)
 
 ## Line 492: num_parts (similar to batch_size) should be small : default 10
@@ -314,6 +331,13 @@ def compute_statistics_jit(overlaps,
 
 
 def get_split_parts(num, num_part):
+    # When the number of frames is smaller than num_part (e.g. a short test
+    # split), the old split produced leading zero-length parts, which made the
+    # per-part concatenate fail with "need at least one array to concatenate".
+    # Cap the number of parts at the number of frames and drop empty parts so
+    # the evaluation works for both small and full splits.
+    if num < num_part:
+        return [num] if num > 0 else []
     same_part = num // num_part
     remain_num = num % num_part
     if remain_num == 0:
