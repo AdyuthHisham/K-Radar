@@ -13,6 +13,13 @@ Imports directly from the effects directory (not through the root datasets/
 package) to avoid pulling in open3d-dependent K-Radar modules.
 """
 
+# Required to run under the kradarV0.sif container's Python 3.8, which
+# evaluates variable annotations such as `_results: list[str] = []` at runtime
+# and rejects the PEP 585 builtin generics. noise_injection.py carries the same
+# import for the same reason. Without it these tests only run on a modern local
+# Python -- i.e. not in the environment that actually executes the jobs.
+from __future__ import annotations
+
 import sys
 import os
 _TESTDIR = os.path.dirname(os.path.abspath(__file__))
