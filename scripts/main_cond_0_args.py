@@ -37,23 +37,46 @@ if __name__ == '__main__':
                         help='Use subset for validation')
     parser.add_argument('--print_memory', action='store_true',
                         help='Print memory usage')
-    
+    parser.add_argument('--noise-config', type=str, default=None,
+                        help='Path to a noise-injection YAML (datasets/effects). '
+                             'Omit for a clean run — the noise-injection module is '
+                             'not even imported in that case.')
+    parser.add_argument('--blackout-policy', type=str, default='empty',
+                        choices=('empty', 'zero_feature', 'last_frame_hold'),
+                        help='How a blacked-out modality (frame_deletion / loss_complete) '
+                             'is represented to the model. Only used with --noise-config. '
+                             'See datasets/effects/eval_wrapper.py for the rationale.')
+
     args = parser.parse_args()
-    
+
     PATH_CONFIG = args.config
     PATH_MODEL = args.model
 
     pline = PipelineDetection_v1_0(PATH_CONFIG, mode='test')
     pline.load_dict_model(PATH_MODEL)
-    
+
     pline.network.eval()
+
+    if args.noise_config is not None:
+        from datasets.effects import NoiseInjectedDataset, install_blackout_hooks, load_injector
+
+        injector = load_injector(args.noise_config)
+        print(f'[noise-injection] Loaded config from {args.noise_config} '
+              f'(seed={injector.config.seed}, blackout_policy={args.blackout_policy}, '
+              f'{injector._metadata()})')
+        pline.dataset_test = NoiseInjectedDataset(
+            pline.dataset_test, injector, blackout_policy=args.blackout_policy
+        )
+        if args.blackout_policy == 'zero_feature':
+            n_hooks = install_blackout_hooks(pline.network)
+            print(f'[noise-injection] Installed {n_hooks} blackout forward hooks')
 
     # Save the code for identification
     import shutil
     shutil.copy2(os.path.realpath(__file__), os.path.join(pline.path_log, 'executed_code.txt'))
-    
+
     pline.validate_kitti_conditional(
-        list_conf_thr=args.conf_thr, 
-        is_subset=args.subset, 
+        list_conf_thr=args.conf_thr,
+        is_subset=args.subset,
         is_print_memory=args.print_memory
     )

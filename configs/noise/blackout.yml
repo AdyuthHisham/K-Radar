@@ -1,0 +1,49 @@
+# Noise Injection — Smoke Test, blackout condition.
+#
+# Superset of shape_preserving.yml plus two effects that set a sensor key to
+# None (radar frame_deletion, lidar loss_complete). None cannot reach the
+# model as-is — main_cond_0_args.py's --blackout-policy substitutes a
+# concrete tensor for it; see datasets/effects/eval_wrapper.py for the three
+# substitution policies and the physical scenario each represents.
+#
+# `interval: 2` (rather than the visual-inspection default of 10) so on this
+# 6-frame smoke run the blackout path is actually exercised — real radar
+# frame indices are close to uniformly even/odd, so roughly half the 6 frames
+# should trigger it.
+seed: 42
+
+radar:
+  - name: frame_deletion
+    p: 1.0
+    params:
+      mode: deterministic
+      interval: 2
+  - name: noise_induced_shifts
+    p: 1.0
+    params:
+      shift_std: 2.0
+      distribution: gaussian
+  - name: loss_partial
+    p: 1.0
+    params:
+      fraction: 0.3
+
+lidar:
+  - name: loss_complete
+    p: 1.0
+    params: {}
+  - name: gaussian_noise
+    p: 1.0
+    params:
+      sigma_xy: 0.5
+      sigma_z: 0.2
+  - name: loss_partial
+    p: 1.0
+    params:
+      fraction: 0.3
+
+camera:
+  - name: gaussian_noise
+    p: 1.0
+    params:
+      sigma: 40
