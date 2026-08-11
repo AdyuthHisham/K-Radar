@@ -70,8 +70,11 @@ _POINT_KEYS: dict[str, list[str]] = {
 
 _BLACKOUT_EFFECT_NAMES = ("frame_deletion", "loss_complete")
 
-# Fallback width when a key was already absent/None before injection (a missing
-# sensor file). rdr_sparse and ldr64 are both (N, 4) in this pipeline.
+# Fallback width used only when a key was already absent/None BEFORE injection
+# (a missing sensor file), so no original array is available to copy the column
+# count from. Widths differ per sensor -- rdr_sparse is (N, 4) [x, y, z, power]
+# and ldr64 is (N, 9) -- so this is a last resort; the real width is read off
+# the saved array whenever one exists.
 _DEFAULT_WIDTH = 4
 
 

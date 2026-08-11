@@ -73,21 +73,34 @@ def _load_condition(root: str, name: str) -> dict[str, list[dict]] | None:
     return frames
 
 
-def _match_and_displace(clean_boxes: list[dict], other_boxes: list[dict]) -> list[float]:
-    """Greedy nearest-center matching within class; returns per-match displacement (m)."""
+def _match_and_displace(
+    clean_boxes: list[dict], other_boxes: list[dict], match_radius: float
+) -> tuple[list[float], int]:
+    """Greedy nearest-center matching within class, gated by a distance cutoff.
+
+    Without a cutoff, a heavily corrupted run pairs boxes that have nothing to
+    do with each other and reports the distance between unrelated objects as
+    "displacement". Candidates beyond ``match_radius`` metres are treated as
+    unmatched instead -- i.e. the clean detection was lost, not moved.
+
+    Returns (displacements, n_unmatched_clean).
+    """
     remaining = list(other_boxes)
     displacements = []
+    unmatched = 0
     for cb in clean_boxes:
         candidates = [b for b in remaining if b["cls"] == cb["cls"]]
         if not candidates:
+            unmatched += 1
             continue
-        best = min(
-            candidates,
-            key=lambda b: math.dist(cb["loc"], b["loc"]),
-        )
-        displacements.append(math.dist(cb["loc"], best["loc"]))
+        best = min(candidates, key=lambda b: math.dist(cb["loc"], b["loc"]))
+        dist = math.dist(cb["loc"], best["loc"])
+        if dist > match_radius:
+            unmatched += 1
+            continue
+        displacements.append(dist)
         remaining.remove(best)
-    return displacements
+    return displacements, unmatched
 
 
 def main() -> None:
@@ -95,6 +108,11 @@ def main() -> None:
     ap.add_argument("--outputs", default="outputs/alvis_smoke")
     ap.add_argument("--baseline", default="clean")
     ap.add_argument("--conditions", nargs="+", default=["clean", "noisy_shape", "noisy_blackout"])
+    ap.add_argument("--match-radius", type=float, default=5.0,
+                    help="Max centre distance (m) for a noisy box to count as the same "
+                         "detection as a clean one; beyond this the clean box is counted "
+                         "as lost rather than displaced.")
+    ap.add_argument("--csv", default=None, help="Optional path to write the summary table as CSV.")
     args = ap.parse_args()
 
     data = {name: _load_condition(args.outputs, name) for name in args.conditions}
@@ -125,20 +143,24 @@ def main() -> None:
             )
         print(f"  [{name:16s}] TOTAL detections across {len(frames)} frame(s): {total}")
 
+    rows: list[tuple] = []
     print(f"\n=== displacement vs. baseline '{args.baseline}' ===")
     for name, frames in data.items():
         if name == args.baseline or frames is None:
             continue
         all_disp = []
+        total_unmatched = 0
         for frame_id, clean_boxes in sorted(baseline.items()):
             other_boxes = frames.get(frame_id, [])
-            disp = _match_and_displace(clean_boxes, other_boxes)
+            disp, unmatched = _match_and_displace(clean_boxes, other_boxes, args.match_radius)
             all_disp.extend(disp)
+            total_unmatched += unmatched
             n_clean, n_other = len(clean_boxes), len(other_boxes)
             disp_str = f"{sum(disp) / len(disp):.3f} m" if disp else "n/a (no matches)"
             print(
                 f"  [{name:16s}] frame {frame_id}: clean={n_clean} boxes, "
-                f"this={n_other} boxes, mean matched displacement={disp_str}"
+                f"this={n_other} boxes, matched={len(disp)}, lost={unmatched}, "
+                f"mean displacement={disp_str}"
             )
         n_clean_total = sum(len(b) for b in baseline.values())
         n_this_total = sum(len(b) for b in frames.values())
@@ -146,6 +168,9 @@ def main() -> None:
             f"  [{name:16s}] detections: clean={n_clean_total} -> this={n_this_total} "
             f"({n_this_total - n_clean_total:+d})"
         )
+        mean_disp = sum(all_disp) / len(all_disp) if all_disp else float("nan")
+        rows.append((name, n_clean_total, n_this_total, n_this_total - n_clean_total,
+                     len(all_disp), total_unmatched, mean_disp))
         if all_disp:
             print(
                 f"  [{name:16s}] OVERALL mean displacement over {len(all_disp)} matched box(es): "
@@ -162,6 +187,18 @@ def main() -> None:
                 f"  [{name:16s}] no matched boxes across any frame "
                 f"(detections suppressed rather than displaced)"
             )
+
+
+    if args.csv:
+        import csv
+        with open(args.csv, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["condition", "clean_detections", "detections", "delta",
+                        "matched_boxes", "lost_boxes", "mean_displacement_m"])
+            for r in rows:
+                w.writerow([r[0], r[1], r[2], r[3], r[4], r[5],
+                            "" if r[6] != r[6] else f"{r[6]:.3f}"])
+        print(f"\nWrote summary table to {args.csv}")
 
 
 if __name__ == "__main__":
