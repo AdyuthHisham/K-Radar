@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ASF Corruption Study — Clean vs Noisy Sensor Data</title>
+<style>
+body { font-family: -apple-system,BlinkMacSystemFont,sans-serif; max-width:1700px; margin:0 auto;
+       padding:20px; background:#111; color:#ddd; }
+h1 { color:#e94560; }
+h2 { color:#e94560; margin:30px 0 10px; border-bottom:2px solid #333; padding-bottom:5px; }
+h3 { color:#aaa; margin:15px 0 5px; font-size:14px; text-transform:uppercase; letter-spacing:1px; }
+.frame-box { background:#1a1a2e; border-radius:8px; padding:20px; margin:20px 0; }
+.pair-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:14px; }
+.pair-grid img { width:100%; border:1px solid #333; border-radius:4px; }
+.caption { text-align:center; font-size:11px; color:#888; margin-bottom:4px; }
+.desc { color:#bbb; font-size:13px; margin:6px 0 14px; }
+.badge { display:inline-block; font-size:10px; padding:2px 7px; border-radius:3px; margin-left:8px; }
+.badge-ok { background:#2d6a4f; color:#fff; }
+.badge-crash { background:#e94560; color:#fff; }
+.notice { background:#332; border-left:4px solid #e94560; padding:10px 14px; margin:10px 0 20px; font-size:13px; }
+table { border-collapse:collapse; margin:10px 0 20px; font-size:13px; }
+th,td { border:1px solid #333; padding:5px 10px; text-align:left; }
+th { background:#1a1a2e; color:#e94560; }
+code { background:#222; padding:1px 5px; border-radius:3px; }
+a { color:#e94560; }
+</style>
+</head>
+<body>
+<h1>ASF Corruption Study — Clean vs Noisy Sensor Data</h1>
+<p>Per-sensor corruption sweep on the K-Radar 6-frame sample (sequences 1 &amp; 2, the 3 densest
+frames each). Each condition applies <b>exactly one effect to exactly one modality</b>; every
+other sensor is clean. Seed: 42 &middot; conf_thr: 0.3</p>
+<div class="notice">
+<b>These are the actual tensors handed to the model</b>, dumped at inference time — not
+re-simulated afterwards. Every <code>CLEAN</code> / <code>CORRUPTED</code> pair is the same frame
+before and after injection. Point clouds are rendered in BEV; the ROI is
+<code>x 0–72 m, y ±16 m</code>.
+<br><br>
+<b>Reading <code>loss_partial</code> and <code>_zeros</code>:</b> these zero points <i>in place</i>
+rather than deleting them, so the affected points collapse to the origin. They use the
+zero-out-aware renderer (magenta marker + origin inset + counts), matching the existing
+<a href="../../noise_visual_inspection/index.html">noise visual inspection</a> gallery.
+<br><br>
+<b>Detection counts</b> are from <code>corruption_summary.csv</code>; see
+<code>outputs/alvis_smoke/RESULTS.md</code> for the full analysis and caveats.
+</div>
+<h2>Summary</h2>
+<table>
+<tr><th>Condition</th><th>Detections (clean = 19)</th></tr>
+<tr><td>Camera — Frame Deletion</td><td>19 / 19 detections (+0)</td></tr>
+<tr><td>Camera — Gaussian Noise (σ=40)</td><td>18 / 19 detections (−1)</td></tr>
+<tr><td>Camera — Loss Partial (0.3)</td><td>18 / 19 detections (−1)</td></tr>
+<tr><td>LiDAR — Frame Deletion</td><td>job aborted, 0 predictions</td></tr>
+<tr><td>LiDAR — Gaussian Noise</td><td>7 / 19 detections (−12)</td></tr>
+<tr><td>LiDAR — Loss Partial (0.5)</td><td>16 / 19 detections (−3)</td></tr>
+<tr><td>LiDAR — All-Zero Frame</td><td>9 / 19 detections (−10)</td></tr>
+<tr><td>Radar — Frame Deletion</td><td>job aborted, 0 predictions</td></tr>
+<tr><td>Radar — Loss Partial (0.5)</td><td>19 / 19 detections (+0)</td></tr>
+<tr><td>Radar — Noise-Induced Shifts</td><td>16 / 19 detections (−3)</td></tr>
+<tr><td>Radar — All-Zero Frame</td><td>20 / 19 detections (+1)</td></tr>
+</table>
+<div class="frame-box">
+<h2>Camera — Frame Deletion<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Whole frame blacked out on even frames (3 of 6 here).<br><b>Result:</b> 19 / 19 detections (+0)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000000_seq1_clean.png"><img src="img/camera_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000000_seq1_corrupt.png"><img src="img/camera_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000001_seq1_clean.png"><img src="img/camera_frame_deletion_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000001_seq1_corrupt.png"><img src="img/camera_frame_deletion_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000002_seq1_clean.png"><img src="img/camera_frame_deletion_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000002_seq1_corrupt.png"><img src="img/camera_frame_deletion_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000003_seq2_clean.png"><img src="img/camera_frame_deletion_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000003_seq2_corrupt.png"><img src="img/camera_frame_deletion_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000004_seq2_clean.png"><img src="img/camera_frame_deletion_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000004_seq2_corrupt.png"><img src="img/camera_frame_deletion_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000005_seq2_clean.png"><img src="img/camera_frame_deletion_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000005_seq2_corrupt.png"><img src="img/camera_frame_deletion_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Camera — Gaussian Noise (σ=40)<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Additive noise in 0–255 image units.<br><b>Result:</b> 18 / 19 detections (−1)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000000_seq1_clean.png"><img src="img/camera_gaussian_noise_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000000_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000001_seq1_clean.png"><img src="img/camera_gaussian_noise_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000001_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000002_seq1_clean.png"><img src="img/camera_gaussian_noise_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000002_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000003_seq2_clean.png"><img src="img/camera_gaussian_noise_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000003_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000004_seq2_clean.png"><img src="img/camera_gaussian_noise_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000004_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000005_seq2_clean.png"><img src="img/camera_gaussian_noise_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000005_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Camera — Loss Partial (0.3)<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">A contiguous 30% rectangle blacked out.<br><b>Result:</b> 18 / 19 detections (−1)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000000_seq1_clean.png"><img src="img/camera_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000000_seq1_corrupt.png"><img src="img/camera_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000001_seq1_clean.png"><img src="img/camera_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000001_seq1_corrupt.png"><img src="img/camera_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000002_seq1_clean.png"><img src="img/camera_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000002_seq1_corrupt.png"><img src="img/camera_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000003_seq2_clean.png"><img src="img/camera_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000003_seq2_corrupt.png"><img src="img/camera_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000004_seq2_clean.png"><img src="img/camera_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000004_seq2_corrupt.png"><img src="img/camera_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000005_seq2_clean.png"><img src="img/camera_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000005_seq2_corrupt.png"><img src="img/camera_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>LiDAR — Frame Deletion<span class="badge badge-crash">MODEL ABORTED</span></h2>
+<p class="desc">LiDAR delivers nothing on even frames. ABORTS the model in the sparse-conv backbone, so only frame 0 exists.<br><b>Result:</b> job aborted, 0 predictions</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_frame_deletion_000000_seq1_clean.png"><img src="img/lidar_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_frame_deletion_000000_seq1_corrupt.png"><img src="img/lidar_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>LiDAR — Gaussian Noise<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">N(0, 0.5 m) on x/y, N(0, 0.2 m) on z. Exceeds the 0.4 m voxel size.<br><b>Result:</b> 7 / 19 detections (−12)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000000_seq1_clean.png"><img src="img/lidar_gaussian_noise_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000000_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000001_seq1_clean.png"><img src="img/lidar_gaussian_noise_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000001_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000002_seq1_clean.png"><img src="img/lidar_gaussian_noise_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000002_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000003_seq2_clean.png"><img src="img/lidar_gaussian_noise_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000003_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000004_seq2_clean.png"><img src="img/lidar_gaussian_noise_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000004_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000005_seq2_clean.png"><img src="img/lidar_gaussian_noise_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000005_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>LiDAR — Loss Partial (0.5)<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Half the points zeroed in place; row count preserved.<br><b>Result:</b> 16 / 19 detections (−3)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000000_seq1_clean.png"><img src="img/lidar_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000000_seq1_corrupt.png"><img src="img/lidar_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000001_seq1_clean.png"><img src="img/lidar_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000001_seq1_corrupt.png"><img src="img/lidar_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000002_seq1_clean.png"><img src="img/lidar_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000002_seq1_corrupt.png"><img src="img/lidar_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000003_seq2_clean.png"><img src="img/lidar_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000003_seq2_corrupt.png"><img src="img/lidar_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000004_seq2_clean.png"><img src="img/lidar_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000004_seq2_corrupt.png"><img src="img/lidar_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000005_seq2_clean.png"><img src="img/lidar_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000005_seq2_corrupt.png"><img src="img/lidar_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>LiDAR — All-Zero Frame<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Sensor alive but every reading zero.<br><b>Result:</b> 9 / 19 detections (−10)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000000_seq1_clean.png"><img src="img/lidar_zeros_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000000_seq1_corrupt.png"><img src="img/lidar_zeros_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000001_seq1_clean.png"><img src="img/lidar_zeros_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000001_seq1_corrupt.png"><img src="img/lidar_zeros_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000002_seq1_clean.png"><img src="img/lidar_zeros_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000002_seq1_corrupt.png"><img src="img/lidar_zeros_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000003_seq2_clean.png"><img src="img/lidar_zeros_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000003_seq2_corrupt.png"><img src="img/lidar_zeros_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000004_seq2_clean.png"><img src="img/lidar_zeros_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000004_seq2_corrupt.png"><img src="img/lidar_zeros_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000005_seq2_clean.png"><img src="img/lidar_zeros_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000005_seq2_corrupt.png"><img src="img/lidar_zeros_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Radar — Frame Deletion<span class="badge badge-crash">MODEL ABORTED</span></h2>
+<p class="desc">Radar delivers nothing on even frames. ABORTS the model in the sparse-conv backbone (zero voxels), so only frame 0 exists.<br><b>Result:</b> job aborted, 0 predictions</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_frame_deletion_000000_seq1_clean.png"><img src="img/radar_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_frame_deletion_000000_seq1_corrupt.png"><img src="img/radar_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Radar — Loss Partial (0.5)<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Half the detections zeroed in place; row count preserved.<br><b>Result:</b> 19 / 19 detections (+0)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000000_seq1_clean.png"><img src="img/radar_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000000_seq1_corrupt.png"><img src="img/radar_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000001_seq1_clean.png"><img src="img/radar_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000001_seq1_corrupt.png"><img src="img/radar_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000002_seq1_clean.png"><img src="img/radar_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000002_seq1_corrupt.png"><img src="img/radar_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000003_seq2_clean.png"><img src="img/radar_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000003_seq2_corrupt.png"><img src="img/radar_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000004_seq2_clean.png"><img src="img/radar_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000004_seq2_corrupt.png"><img src="img/radar_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000005_seq2_clean.png"><img src="img/radar_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000005_seq2_corrupt.png"><img src="img/radar_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Radar — Noise-Induced Shifts<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Every detection displaced by N(0, 2.0 m). Shape preserved.<br><b>Result:</b> 16 / 19 detections (−3)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000000_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000000_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000001_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000001_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000002_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000002_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000003_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000003_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000004_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000004_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000005_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000005_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+<div class="frame-box">
+<h2>Radar — All-Zero Frame<span class="badge badge-ok">RAN</span></h2>
+<p class="desc">Sensor alive but every reading zero (loss_partial at fraction 1.0).<br><b>Result:</b> 20 / 19 detections (+1)</p>
+<h3>000000_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000000_seq1_clean.png"><img src="img/radar_zeros_000000_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000000_seq1_corrupt.png"><img src="img/radar_zeros_000000_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000001_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000001_seq1_clean.png"><img src="img/radar_zeros_000001_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000001_seq1_corrupt.png"><img src="img/radar_zeros_000001_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000002_seq1</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000002_seq1_clean.png"><img src="img/radar_zeros_000002_seq1_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000002_seq1_corrupt.png"><img src="img/radar_zeros_000002_seq1_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000003_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000003_seq2_clean.png"><img src="img/radar_zeros_000003_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000003_seq2_corrupt.png"><img src="img/radar_zeros_000003_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000004_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000004_seq2_clean.png"><img src="img/radar_zeros_000004_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000004_seq2_corrupt.png"><img src="img/radar_zeros_000004_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+<h3>000005_seq2</h3>
+<div class="pair-grid">
+<div><div class="caption">CLEAN</div><a href="img/radar_zeros_000005_seq2_clean.png"><img src="img/radar_zeros_000005_seq2_clean.png" alt="clean"></a></div>
+<div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000005_seq2_corrupt.png"><img src="img/radar_zeros_000005_seq2_corrupt.png" alt="corrupted"></a></div>
+</div>
+</div>
+</body>
+</html>
