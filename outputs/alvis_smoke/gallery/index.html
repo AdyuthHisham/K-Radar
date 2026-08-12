@@ -16,6 +16,7 @@ h3 { color:#aaa; margin:15px 0 5px; font-size:14px; text-transform:uppercase; le
 .badge-ok { background:#2d6a4f; color:#fff; }
 .badge-crash { background:#e94560; color:#fff; }
 .notice { background:#332; border-left:4px solid #e94560; padding:10px 14px; margin:10px 0 20px; font-size:13px; }
+.sensor-line { font-size:12px; color:#999; margin:4px 0 8px; font-family:monospace; }
 table { border-collapse:collapse; margin:10px 0 20px; font-size:13px; }
 th,td { border:1px solid #333; padding:5px 10px; text-align:left; }
 th { background:#1a1a2e; color:#e94560; }
@@ -42,19 +43,31 @@ zero-out-aware renderer (magenta marker + origin inset + counts), matching the e
 <b>Detection counts</b> are from <code>corruption_summary.csv</code>; see
 <code>outputs/alvis_smoke/RESULTS.md</code> for the full analysis and caveats.
 <br><br>
-<b>Boxes on the radar/LiDAR views:</b> <span style="color:#3cdc3c">solid green</span> = Sedan
-detection, <span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows
-confidence score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel
-always shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that
-condition's own predictions</b> on the corrupted input — so a missing solid box in the
-corrupted panel is a real missed detection, not a rendering gap. Ground truth is identical
-across all conditions (same frame, same objects) and is shown for reference on both panels.
-Two conditions (radar/lidar frame_deletion) crashed the model before writing predictions, so
-their surviving frame shows sensor data only, no boxes.
+<b>Boxes:</b> <span style="color:#3cdc3c">solid green</span> = Sedan detection,
+<span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows confidence
+score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel always
+shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that condition's own
+predictions</b> on the corrupted input — so a missing solid box in the corrupted panel is a real
+missed detection, not a rendering gap. Ground truth is identical across all conditions (same
+frame, same objects) and is shown for reference on both panels. Two conditions (radar/lidar
+frame_deletion) crashed the model before writing predictions, so their surviving frame shows
+sensor data only, no boxes.
 <br><br>
-<b>Camera boxes are not shown</b> — the pipeline's KITTI output only carries a placeholder 2D
-bbox (<code>50 50 150 150</code> for every detection), not a real image-plane projection, so
-there is nothing accurate to overlay on the camera frames.
+<b>Camera boxes are the model's real 3D boxes, projected.</b> The pipeline's own KITTI output
+carries only a placeholder 2D bbox column, but the per-sequence calibration
+(<code>resources/cam_calib/T_params_seq/</code>, the same matrices the eval pipeline itself
+uses for the camera branch) gives a genuine radar-frame&rarr;image-pixel projection, so the 3D
+box corners are projected and drawn as a wireframe. Verified against the actual frame content:
+projected boxes sit on image regions with 6&ndash;8.5&times; the average edge-gradient strength
+of the frame, i.e. real object edges, not empty road or sky.
+<br><br>
+<b>Which sensor "identified" a box?</b> None of them individually — ASF is a fusion detector:
+all three encoders (camera, LiDAR, radar) run on every frame, and every detection is the fused
+output of all three (<code>models/skeletons/fusion_base_integrated.py</code>). So a box can't
+be attributed to one sensor. What the per-frame line under each pair states instead is
+<b>which sensor's input was corrupted</b> for that condition — the honest question this study
+can answer is "how does the fused output change when this one sensor's input degrades," not
+"which sensor found this object."
 </div>
 <h2>Summary</h2>
 <table>
@@ -75,31 +88,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Camera — Frame Deletion<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Whole frame blacked out on even frames (3 of 6 here).<br><b>Result:</b> 19 / 19 detections (+0)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000000_seq1_clean.png"><img src="img/camera_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000000_seq1_corrupt.png"><img src="img/camera_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000001_seq1_clean.png"><img src="img/camera_frame_deletion_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000001_seq1_corrupt.png"><img src="img/camera_frame_deletion_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000002_seq1_clean.png"><img src="img/camera_frame_deletion_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000002_seq1_corrupt.png"><img src="img/camera_frame_deletion_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000003_seq2_clean.png"><img src="img/camera_frame_deletion_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000003_seq2_corrupt.png"><img src="img/camera_frame_deletion_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000004_seq2_clean.png"><img src="img/camera_frame_deletion_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000004_seq2_corrupt.png"><img src="img/camera_frame_deletion_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_frame_deletion_000005_seq2_clean.png"><img src="img/camera_frame_deletion_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_frame_deletion_000005_seq2_corrupt.png"><img src="img/camera_frame_deletion_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -109,31 +128,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Camera — Gaussian Noise (σ=40)<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Additive noise in 0–255 image units.<br><b>Result:</b> 18 / 19 detections (−1)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000000_seq1_clean.png"><img src="img/camera_gaussian_noise_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000000_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000001_seq1_clean.png"><img src="img/camera_gaussian_noise_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000001_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000002_seq1_clean.png"><img src="img/camera_gaussian_noise_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000002_seq1_corrupt.png"><img src="img/camera_gaussian_noise_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000003_seq2_clean.png"><img src="img/camera_gaussian_noise_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000003_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000004_seq2_clean.png"><img src="img/camera_gaussian_noise_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000004_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_gaussian_noise_000005_seq2_clean.png"><img src="img/camera_gaussian_noise_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_gaussian_noise_000005_seq2_corrupt.png"><img src="img/camera_gaussian_noise_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -143,31 +168,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Camera — Loss Partial (0.3)<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">A contiguous 30% rectangle blacked out.<br><b>Result:</b> 18 / 19 detections (−1)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000000_seq1_clean.png"><img src="img/camera_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000000_seq1_corrupt.png"><img src="img/camera_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000001_seq1_clean.png"><img src="img/camera_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000001_seq1_corrupt.png"><img src="img/camera_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000002_seq1_clean.png"><img src="img/camera_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000002_seq1_corrupt.png"><img src="img/camera_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000003_seq2_clean.png"><img src="img/camera_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000003_seq2_corrupt.png"><img src="img/camera_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000004_seq2_clean.png"><img src="img/camera_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000004_seq2_corrupt.png"><img src="img/camera_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: <b style='color:#e94560'>CORRUPTED (loss_partial)</b></div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/camera_loss_partial_000005_seq2_clean.png"><img src="img/camera_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/camera_loss_partial_000005_seq2_corrupt.png"><img src="img/camera_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -177,6 +208,7 @@ there is nothing accurate to overlay on the camera frames.
 <h2>LiDAR — Frame Deletion<span class="badge badge-crash">MODEL ABORTED</span></h2>
 <p class="desc">LiDAR delivers nothing on even frames. ABORTS the model in the sparse-conv backbone, so only frame 0 exists.<br><b>Result:</b> job aborted, 0 predictions</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_frame_deletion_000000_seq1_clean.png"><img src="img/lidar_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_frame_deletion_000000_seq1_corrupt.png"><img src="img/lidar_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
@@ -186,31 +218,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>LiDAR — Gaussian Noise<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">N(0, 0.5 m) on x/y, N(0, 0.2 m) on z. Exceeds the 0.4 m voxel size.<br><b>Result:</b> 7 / 19 detections (−12)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000000_seq1_clean.png"><img src="img/lidar_gaussian_noise_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000000_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000001_seq1_clean.png"><img src="img/lidar_gaussian_noise_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000001_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000002_seq1_clean.png"><img src="img/lidar_gaussian_noise_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000002_seq1_corrupt.png"><img src="img/lidar_gaussian_noise_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000003_seq2_clean.png"><img src="img/lidar_gaussian_noise_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000003_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000004_seq2_clean.png"><img src="img/lidar_gaussian_noise_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000004_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (gaussian_noise)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_gaussian_noise_000005_seq2_clean.png"><img src="img/lidar_gaussian_noise_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_gaussian_noise_000005_seq2_corrupt.png"><img src="img/lidar_gaussian_noise_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -220,31 +258,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>LiDAR — Loss Partial (0.5)<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Half the points zeroed in place; row count preserved.<br><b>Result:</b> 16 / 19 detections (−3)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000000_seq1_clean.png"><img src="img/lidar_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000000_seq1_corrupt.png"><img src="img/lidar_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000001_seq1_clean.png"><img src="img/lidar_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000001_seq1_corrupt.png"><img src="img/lidar_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000002_seq1_clean.png"><img src="img/lidar_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000002_seq1_corrupt.png"><img src="img/lidar_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000003_seq2_clean.png"><img src="img/lidar_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000003_seq2_corrupt.png"><img src="img/lidar_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000004_seq2_clean.png"><img src="img/lidar_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000004_seq2_corrupt.png"><img src="img/lidar_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_loss_partial_000005_seq2_clean.png"><img src="img/lidar_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_loss_partial_000005_seq2_corrupt.png"><img src="img/lidar_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -254,31 +298,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>LiDAR — All-Zero Frame<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Sensor alive but every reading zero.<br><b>Result:</b> 9 / 19 detections (−10)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000000_seq1_clean.png"><img src="img/lidar_zeros_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000000_seq1_corrupt.png"><img src="img/lidar_zeros_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000001_seq1_clean.png"><img src="img/lidar_zeros_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000001_seq1_corrupt.png"><img src="img/lidar_zeros_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000002_seq1_clean.png"><img src="img/lidar_zeros_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000002_seq1_corrupt.png"><img src="img/lidar_zeros_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000003_seq2_clean.png"><img src="img/lidar_zeros_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000003_seq2_corrupt.png"><img src="img/lidar_zeros_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000004_seq2_clean.png"><img src="img/lidar_zeros_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000004_seq2_corrupt.png"><img src="img/lidar_zeros_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: clean &nbsp;|&nbsp; LiDAR: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/lidar_zeros_000005_seq2_clean.png"><img src="img/lidar_zeros_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/lidar_zeros_000005_seq2_corrupt.png"><img src="img/lidar_zeros_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -288,6 +338,7 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Radar — Frame Deletion<span class="badge badge-crash">MODEL ABORTED</span></h2>
 <p class="desc">Radar delivers nothing on even frames. ABORTS the model in the sparse-conv backbone (zero voxels), so only frame 0 exists.<br><b>Result:</b> job aborted, 0 predictions</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (frame_deletion)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_frame_deletion_000000_seq1_clean.png"><img src="img/radar_frame_deletion_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_frame_deletion_000000_seq1_corrupt.png"><img src="img/radar_frame_deletion_000000_seq1_corrupt.png" alt="corrupted"></a></div>
@@ -297,31 +348,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Radar — Loss Partial (0.5)<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Half the detections zeroed in place; row count preserved.<br><b>Result:</b> 19 / 19 detections (+0)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000000_seq1_clean.png"><img src="img/radar_loss_partial_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000000_seq1_corrupt.png"><img src="img/radar_loss_partial_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000001_seq1_clean.png"><img src="img/radar_loss_partial_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000001_seq1_corrupt.png"><img src="img/radar_loss_partial_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000002_seq1_clean.png"><img src="img/radar_loss_partial_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000002_seq1_corrupt.png"><img src="img/radar_loss_partial_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000003_seq2_clean.png"><img src="img/radar_loss_partial_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000003_seq2_corrupt.png"><img src="img/radar_loss_partial_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000004_seq2_clean.png"><img src="img/radar_loss_partial_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000004_seq2_corrupt.png"><img src="img/radar_loss_partial_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (loss_partial)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_loss_partial_000005_seq2_clean.png"><img src="img/radar_loss_partial_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_loss_partial_000005_seq2_corrupt.png"><img src="img/radar_loss_partial_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -331,31 +388,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Radar — Noise-Induced Shifts<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Every detection displaced by N(0, 2.0 m). Shape preserved.<br><b>Result:</b> 16 / 19 detections (−3)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000000_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000000_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000001_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000001_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000002_seq1_clean.png"><img src="img/radar_noise_induced_shifts_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000002_seq1_corrupt.png"><img src="img/radar_noise_induced_shifts_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000003_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000003_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000004_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000004_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (noise_induced_shifts)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_noise_induced_shifts_000005_seq2_clean.png"><img src="img/radar_noise_induced_shifts_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_noise_induced_shifts_000005_seq2_corrupt.png"><img src="img/radar_noise_induced_shifts_000005_seq2_corrupt.png" alt="corrupted"></a></div>
@@ -365,31 +428,37 @@ there is nothing accurate to overlay on the camera frames.
 <h2>Radar — All-Zero Frame<span class="badge badge-ok">RAN</span></h2>
 <p class="desc">Sensor alive but every reading zero (loss_partial at fraction 1.0).<br><b>Result:</b> 20 / 19 detections (+1)</p>
 <h3>000000_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000000_seq1_clean.png"><img src="img/radar_zeros_000000_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000000_seq1_corrupt.png"><img src="img/radar_zeros_000000_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000001_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000001_seq1_clean.png"><img src="img/radar_zeros_000001_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000001_seq1_corrupt.png"><img src="img/radar_zeros_000001_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000002_seq1</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000002_seq1_clean.png"><img src="img/radar_zeros_000002_seq1_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000002_seq1_corrupt.png"><img src="img/radar_zeros_000002_seq1_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000003_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000003_seq2_clean.png"><img src="img/radar_zeros_000003_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000003_seq2_corrupt.png"><img src="img/radar_zeros_000003_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000004_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000004_seq2_clean.png"><img src="img/radar_zeros_000004_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000004_seq2_corrupt.png"><img src="img/radar_zeros_000004_seq2_corrupt.png" alt="corrupted"></a></div>
 </div>
 <h3>000005_seq2</h3>
+<div class="sensor-line">Radar: <b style='color:#e94560'>CORRUPTED (zeros)</b> &nbsp;|&nbsp; LiDAR: clean &nbsp;|&nbsp; Camera: clean</div>
 <div class="pair-grid">
 <div><div class="caption">CLEAN</div><a href="img/radar_zeros_000005_seq2_clean.png"><img src="img/radar_zeros_000005_seq2_clean.png" alt="clean"></a></div>
 <div><div class="caption">CORRUPTED</div><a href="img/radar_zeros_000005_seq2_corrupt.png"><img src="img/radar_zeros_000005_seq2_corrupt.png" alt="corrupted"></a></div>

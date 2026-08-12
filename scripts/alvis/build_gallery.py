@@ -36,10 +36,22 @@ _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 sys.path.insert(0, os.path.join(_REPO, "datasets", "effects"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from visualize_effects_v2 import render_bev, render_bev_zeroout  # noqa: E402
-from kitti_boxes import parse_kitti_boxes, draw_boxes  # noqa: E402
+from kitti_boxes import parse_kitti_boxes, draw_boxes, draw_camera_boxes  # noqa: E402
+import pickle  # noqa: E402
 
 RADAR_IMG = (900, 700)     # render_bev defaults
 RADAR_ZO_IMG = (1000, 760)  # render_bev_zeroout defaults
+CAMERA_IMG = (704, 256)    # exported PNG size (cam_process: resize 0.7, crop to this)
+
+# ASF is a tri-modal FUSION detector: FusionBaseIntegrated.forward runs all
+# three encoders on every frame and hands the fuser three feature maps
+# (models/skeletons/fusion_base_integrated.py:153-155), so no individual
+# detection is "identified by" one sensor -- every box in every condition
+# below (aside from the two that crash outright) is produced by all three
+# branches acting together, one of them corrupted. What DOES vary by
+# condition is which sensor's input was corrupted; that is what the per-row
+# sensor-status line states.
+MODALITY_NAME = {"radar": "Radar", "lidar": "LiDAR", "camera": "Camera"}
 
 # ROI from configs/ASF_v2_0_smoke_alvis.yml: xyz [0,-16,-2, 72,16,7.6].
 # Padded slightly so points just outside the ROI are still visible.
@@ -93,6 +105,40 @@ def frame_index(stem: str) -> str:
     return stem.split("_")[0]
 
 
+def seq_of(stem: str) -> str:
+    """'000000_seq1' -> '1'."""
+    return stem.split("_seq")[1]
+
+
+_calib_cache: dict[str, dict] = {}
+
+
+def load_calib(calib_dir: str, seq: str) -> dict | None:
+    if seq in _calib_cache:
+        return _calib_cache[seq]
+    path = os.path.join(calib_dir, f"seq{seq}_T_params.pkl")
+    if not os.path.exists(path):
+        _calib_cache[seq] = None
+        return None
+    with open(path, "rb") as f:
+        d = pickle.load(f)["front0"]
+    _calib_cache[seq] = d
+    return d
+
+
+def sensor_status_line(cond: str, corrupted: bool) -> str:
+    """'Radar: clean | LiDAR: CORRUPTED (gaussian_noise) | Camera: clean'."""
+    modality = cond.split("_")[0]
+    effect = cond[len(modality) + 1:]
+    parts = []
+    for m in ("radar", "lidar", "camera"):
+        if corrupted and m == modality:
+            parts.append(f"{MODALITY_NAME[m]}: <b style='color:#e94560'>CORRUPTED ({effect})</b>")
+        else:
+            parts.append(f"{MODALITY_NAME[m]}: clean")
+    return " &nbsp;|&nbsp; ".join(parts)
+
+
 def render_pair(clean_pcd, corrupt_pcd, lims, title, out_clean, out_corrupt, zeroout,
                 kitti_dir: str | None, cond: str, stem: str) -> None:
     clean = read_pcd(clean_pcd)
@@ -121,13 +167,40 @@ def render_pair(clean_pcd, corrupt_pcd, lims, title, out_clean, out_corrupt, zer
         draw_boxes(out_corrupt, corrupt_preds, gt, lims, img_w, img_h)
 
 
+def render_camera_pair(clean_src: str, corrupt_src: str, out_clean: str, out_corrupt: str,
+                       kitti_dir: str | None, calib_dir: str, cond: str, stem: str) -> None:
+    shutil.copy2(clean_src, out_clean)
+    shutil.copy2(corrupt_src, out_corrupt)
+
+    if kitti_dir is None:
+        return
+    fi, seq = frame_index(stem), seq_of(stem)
+    calib = load_calib(calib_dir, seq)
+    if calib is None:
+        return
+    r2i, aug = calib["radar2image"], calib["img_aug_matrix"]
+    img_w, img_h = CAMERA_IMG
+
+    gt = parse_kitti_boxes(os.path.join(kitti_dir, "clean", "gts", f"{fi}.txt"))
+    clean_preds = parse_kitti_boxes(os.path.join(kitti_dir, "clean", "preds", f"{fi}.txt"))
+    draw_camera_boxes(out_clean, clean_preds, gt, r2i, aug, img_w, img_h)
+
+    corrupt_preds_path = os.path.join(kitti_dir, cond, "preds", f"{fi}.txt")
+    if os.path.exists(corrupt_preds_path):
+        corrupt_preds = parse_kitti_boxes(corrupt_preds_path)
+        draw_camera_boxes(out_corrupt, corrupt_preds, gt, r2i, aug, img_w, img_h)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--bundle", default=os.path.expanduser("~/kradar_viewable"))
     ap.add_argument("--dest", default=None, help="default: <bundle>/gallery")
     ap.add_argument("--kitti-dir", default=None,
                     help="<dir>/<condition>/{preds,gts}/<frame>.txt -- overlays detected "
-                         "and ground-truth BEV boxes on the radar/lidar renders when set")
+                         "and ground-truth boxes on every render when set")
+    ap.add_argument("--calib-dir", default=None,
+                    help="<dir>/seq<N>_T_params.pkl -- required to project boxes onto the "
+                         "camera frames (see outputs/alvis_smoke/calib/)")
     args = ap.parse_args()
 
     bundle = os.path.abspath(os.path.expanduser(args.bundle))
@@ -138,6 +211,10 @@ def main() -> None:
     if kitti_dir and not os.path.isdir(os.path.join(kitti_dir, "clean")):
         print(f"WARNING: {kitti_dir}/clean not found -- boxes will not be drawn")
         kitti_dir = None
+    calib_dir = os.path.abspath(os.path.expanduser(args.calib_dir)) if args.calib_dir else None
+    if calib_dir and not os.path.isdir(calib_dir):
+        print(f"WARNING: {calib_dir} not found -- camera boxes will not be drawn")
+        calib_dir = None
 
     conditions = sorted(
         d for d in os.listdir(bundle)
@@ -156,11 +233,12 @@ def main() -> None:
             for src in sorted(glob.glob(os.path.join(bundle, cond, "*_front0.png"))):
                 stem = os.path.basename(src).replace("_front0.png", "")
                 clean_src = os.path.join(bundle, "clean", f"{stem}_front0.png")
+                if not os.path.exists(clean_src):
+                    continue
                 c_out, k_out = f"img/{cond}_{stem}_corrupt.png", f"img/{cond}_{stem}_clean.png"
-                shutil.copy2(src, os.path.join(dest, c_out))
-                if os.path.exists(clean_src):
-                    shutil.copy2(clean_src, os.path.join(dest, k_out))
-                rows.append((stem, k_out, c_out))
+                render_camera_pair(clean_src, src, os.path.join(dest, k_out),
+                                   os.path.join(dest, c_out), kitti_dir, calib_dir, cond, stem)
+                rows.append((stem, k_out, c_out, sensor_status_line(cond, corrupted=True)))
         else:
             for src in sorted(glob.glob(os.path.join(bundle, cond, f"*_{key}.pcd"))):
                 stem = os.path.basename(src).replace(f"_{key}.pcd", "")
@@ -172,7 +250,7 @@ def main() -> None:
                 render_pair(clean_src, src, lims, f"{cond} | {stem}",
                             os.path.join(dest, k_out), os.path.join(dest, c_out), zeroout,
                             kitti_dir, cond, stem)
-                rows.append((stem, k_out, c_out))
+                rows.append((stem, k_out, c_out, sensor_status_line(cond, corrupted=True)))
 
         sections.append((cond, title, desc, score, rows))
         print(f"{cond:30s} {len(rows)} frame(s)")
@@ -200,6 +278,7 @@ h3 { color:#aaa; margin:15px 0 5px; font-size:14px; text-transform:uppercase; le
 .badge-ok { background:#2d6a4f; color:#fff; }
 .badge-crash { background:#e94560; color:#fff; }
 .notice { background:#332; border-left:4px solid #e94560; padding:10px 14px; margin:10px 0 20px; font-size:13px; }
+.sensor-line { font-size:12px; color:#999; margin:4px 0 8px; font-family:monospace; }
 table { border-collapse:collapse; margin:10px 0 20px; font-size:13px; }
 th,td { border:1px solid #333; padding:5px 10px; text-align:left; }
 th { background:#1a1a2e; color:#e94560; }
@@ -226,19 +305,31 @@ zero-out-aware renderer (magenta marker + origin inset + counts), matching the e
 <b>Detection counts</b> are from <code>corruption_summary.csv</code>; see
 <code>outputs/alvis_smoke/RESULTS.md</code> for the full analysis and caveats.
 <br><br>
-<b>Boxes on the radar/LiDAR views:</b> <span style="color:#3cdc3c">solid green</span> = Sedan
-detection, <span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows
-confidence score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel
-always shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that
-condition's own predictions</b> on the corrupted input — so a missing solid box in the
-corrupted panel is a real missed detection, not a rendering gap. Ground truth is identical
-across all conditions (same frame, same objects) and is shown for reference on both panels.
-Two conditions (radar/lidar frame_deletion) crashed the model before writing predictions, so
-their surviving frame shows sensor data only, no boxes.
+<b>Boxes:</b> <span style="color:#3cdc3c">solid green</span> = Sedan detection,
+<span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows confidence
+score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel always
+shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that condition's own
+predictions</b> on the corrupted input — so a missing solid box in the corrupted panel is a real
+missed detection, not a rendering gap. Ground truth is identical across all conditions (same
+frame, same objects) and is shown for reference on both panels. Two conditions (radar/lidar
+frame_deletion) crashed the model before writing predictions, so their surviving frame shows
+sensor data only, no boxes.
 <br><br>
-<b>Camera boxes are not shown</b> — the pipeline's KITTI output only carries a placeholder 2D
-bbox (<code>50 50 150 150</code> for every detection), not a real image-plane projection, so
-there is nothing accurate to overlay on the camera frames.
+<b>Camera boxes are the model's real 3D boxes, projected.</b> The pipeline's own KITTI output
+carries only a placeholder 2D bbox column, but the per-sequence calibration
+(<code>resources/cam_calib/T_params_seq/</code>, the same matrices the eval pipeline itself
+uses for the camera branch) gives a genuine radar-frame&rarr;image-pixel projection, so the 3D
+box corners are projected and drawn as a wireframe. Verified against the actual frame content:
+projected boxes sit on image regions with 6&ndash;8.5&times; the average edge-gradient strength
+of the frame, i.e. real object edges, not empty road or sky.
+<br><br>
+<b>Which sensor "identified" a box?</b> None of them individually — ASF is a fusion detector:
+all three encoders (camera, LiDAR, radar) run on every frame, and every detection is the fused
+output of all three (<code>models/skeletons/fusion_base_integrated.py</code>). So a box can't
+be attributed to one sensor. What the per-frame line under each pair states instead is
+<b>which sensor's input was corrupted</b> for that condition — the honest question this study
+can answer is "how does the fused output change when this one sensor's input degrades," not
+"which sensor found this object."
 </div>
 <h2>Summary</h2>
 <table>
@@ -256,8 +347,9 @@ there is nothing accurate to overlay on the camera frames.
         parts.append(f'<p class="desc">{desc}<br><b>Result:</b> {score}</p>')
         if not rows:
             parts.append('<p class="desc">No frames exported.</p>')
-        for stem, clean_img, corrupt_img in rows:
+        for stem, clean_img, corrupt_img, sensor_line in rows:
             parts.append(f'<h3>{stem}</h3>')
+            parts.append(f'<div class="sensor-line">{sensor_line}</div>')
             parts.append('<div class="pair-grid">')
             parts.append(f'<div><div class="caption">CLEAN</div>'
                          f'<a href="{clean_img}"><img src="{clean_img}" alt="clean"></a></div>')

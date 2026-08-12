@@ -30,10 +30,15 @@ import numpy as np
 
 
 def parse_kitti_boxes(path: str) -> list[dict]:
-    """Parse one KITTI-format file into native BEV box params.
+    """Parse one KITTI-format file into native 3D box params.
 
     Skips the 'dummy' placeholder row written for a frame with zero
     detections/objects (see util_pipeline.py:357).
+
+    zc/zl are additionally recovered here (beyond what BEV rendering needs)
+    so the same parsed box can be projected onto the camera image:
+        zc (height, native z)      = loc_y = col 12
+        zl (extent along z/height) = h     = col 8
     """
     boxes = []
     if not os.path.exists(path):
@@ -44,11 +49,12 @@ def parse_kitti_boxes(path: str) -> list[dict]:
             if len(parts) < 15 or parts[0] == "dummy":
                 continue
             cls = parts[0]
-            l, w = float(parts[10]), float(parts[9])
-            xc, yc = float(parts[13]), float(parts[11])
+            zl, w, l = float(parts[8]), float(parts[9]), float(parts[10])
+            xc, zc, yc = float(parts[13]), float(parts[12]), float(parts[11])
             theta = float(parts[14])
             score = float(parts[15]) if len(parts) > 15 else None
-            boxes.append({"cls": cls, "xc": xc, "yc": yc, "l": l, "w": w,
+            boxes.append({"cls": cls, "xc": xc, "yc": yc, "zc": zc,
+                         "l": l, "w": w, "zl": zl,
                          "theta": theta, "score": score})
     return boxes
 
@@ -62,6 +68,96 @@ def _corners_bev(box: dict) -> np.ndarray:
     rx = cx * cos_t - cy * sin_t + box["xc"]
     ry = cx * sin_t + cy * cos_t + box["yc"]
     return np.column_stack([rx, ry])
+
+
+def corners_3d(box: dict) -> np.ndarray:
+    """8 corners (x, y, z) in native radar-frame, matching utils/util_geometry.py:Object3D.
+
+    Order: [+x+y+z, +x+y-z, +x-y+z, +x-y-z, -x+y+z, -x+y-z, -x-y+z, -x-y-z]
+    (Object3D's own corner order, kept identical for consistency).
+    """
+    l, w, h, theta = box["l"], box["w"], box["zl"], box["theta"]
+    cx = np.array([l, l, l, l, -l, -l, -l, -l]) / 2
+    cy = np.array([w, w, -w, -w, w, w, -w, -w]) / 2
+    cz = np.array([h, -h, h, -h, h, -h, h, -h]) / 2
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+    rx = cx * cos_t - cy * sin_t + box["xc"]
+    ry = cx * sin_t + cy * cos_t + box["yc"]
+    rz = cz + box["zc"]
+    return np.column_stack([rx, ry, rz])
+
+
+def project_to_camera(box: dict, radar2image: np.ndarray, img_aug_matrix: np.ndarray
+                      ) -> np.ndarray | None:
+    """Project a native 3D box's 8 corners into the exported camera image's
+    pixel space.
+
+    radar2image / img_aug_matrix come from the per-sequence calibration pickle
+    at resources/cam_calib/T_params_seq/<seq> (key 'front0'), loaded exactly as
+    the eval pipeline itself does (datasets/kradar_fusion_v1_0.py:1413-1420).
+    radar2image is a full projective 4x4 (not a plain 3x4 P-matrix), so all
+    four homogeneous rows are used and the result is perspective-divided by
+    row 2 (index [2]) before applying img_aug_matrix's resize+crop.
+
+    Returns None if any corner projects behind the camera (row-2 <= 0) --
+    drawing those would fold the box across the image, which is worse than
+    not drawing it.
+    """
+    corners = corners_3d(box)
+    hom = np.column_stack([corners, np.ones(len(corners))])  # (8, 4)
+    proj = (radar2image @ hom.T).T  # (8, 4)
+    if np.any(proj[:, 2] <= 0):
+        return None
+    u = proj[:, 0] / proj[:, 2]
+    v = proj[:, 1] / proj[:, 2]
+    raw = np.column_stack([u, v, np.ones(len(u)), np.ones(len(u))])
+    final = (img_aug_matrix @ raw.T).T
+    return final[:, :2]
+
+
+# The 12 edges of a box, indexed into corners_3d()'s 8-corner order.
+_BOX_EDGES = [
+    (0, 1), (0, 2), (3, 1), (3, 2),  # +x face (front) verticals + top/bottom
+    (4, 5), (4, 6), (7, 5), (7, 6),  # -x face (back)
+    (0, 4), (1, 5), (2, 6), (3, 7),  # connecting front to back
+]
+
+
+def draw_camera_boxes(image_path: str, pred_boxes: list[dict], gt_boxes: list[dict],
+                      radar2image: np.ndarray, img_aug_matrix: np.ndarray,
+                      img_w: int, img_h: int, show_gt: bool = True) -> None:
+    """Overlay projected 3D-box wireframes on a camera frame, in place."""
+    canvas = cv2.imread(image_path)
+    if canvas is None:
+        return
+
+    def _draw(boxes, solid_color_fn, dashed):
+        for box in boxes:
+            px = project_to_camera(box, radar2image, img_aug_matrix)
+            if px is None:
+                continue
+            if np.all((px[:, 0] < 0) | (px[:, 0] > img_w)) or \
+               np.all((px[:, 1] < 0) | (px[:, 1] > img_h)):
+                continue  # entirely outside the crop -- nothing to draw
+            color = solid_color_fn(box) if solid_color_fn else _GT_COLOR
+            for a, b in _BOX_EDGES:
+                p0, p1 = px[a].astype(int), px[b].astype(int)
+                if dashed:
+                    _dashed_polylines(canvas, np.array([p0, p1]), color, thickness=1, dash_len=5)
+                else:
+                    cv2.line(canvas, tuple(p0), tuple(p1), color, 2)
+            if solid_color_fn is not None:
+                label = box["cls"] + (f" {box['score']:.2f}" if box["score"] is not None else "")
+                top = px[[0, 2, 4, 6]]
+                lx, ly = int(top[:, 0].min()), int(top[:, 1].min()) - 4
+                cv2.putText(canvas, label, (max(lx, 0), max(ly, 12)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
+
+    if show_gt:
+        _draw(gt_boxes, None, dashed=True)
+    _draw(pred_boxes, lambda b: _CLASS_COLOR.get(b["cls"], (0, 255, 0)), dashed=False)
+
+    cv2.imwrite(image_path, canvas)
 
 
 # BGR. Predictions in green (opacity by score), ground truth in yellow dashed.
