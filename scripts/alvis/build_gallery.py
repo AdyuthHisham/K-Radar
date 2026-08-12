@@ -11,8 +11,16 @@ inspection gallery. loss_partial and *_zeros use the zero-out-aware renderer,
 because those effects collapse points to the origin rather than deleting them —
 a plain BEV would just show a dense dot at (0,0) with no explanation.
 
+If --kitti-dir points at a directory of <condition>/{preds,gts}/<frame>.txt
+(KITTI-format, as written by the eval pipeline), every radar/LiDAR BEV image
+also gets the model's detected objects overlaid: solid boxes for that panel's
+own predictions (the clean panel uses the clean run's predictions; the
+corrupted panel uses that condition's own predictions on the corrupted input),
+dashed boxes for ground truth. See kitti_boxes.py for the coordinate mapping.
+
 Usage:
-    python scripts/alvis/build_gallery.py --bundle ~/kradar_viewable
+    python scripts/alvis/build_gallery.py --bundle ~/kradar_viewable \
+        --kitti-dir outputs/alvis_smoke/kitti_data
 """
 from __future__ import annotations
 
@@ -26,7 +34,12 @@ import numpy as np
 
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(_REPO, "datasets", "effects"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from visualize_effects_v2 import render_bev, render_bev_zeroout  # noqa: E402
+from kitti_boxes import parse_kitti_boxes, draw_boxes  # noqa: E402
+
+RADAR_IMG = (900, 700)     # render_bev defaults
+RADAR_ZO_IMG = (1000, 760)  # render_bev_zeroout defaults
 
 # ROI from configs/ASF_v2_0_smoke_alvis.yml: xyz [0,-16,-2, 72,16,7.6].
 # Padded slightly so points just outside the ROI are still visible.
@@ -75,7 +88,13 @@ def read_pcd(path: str) -> np.ndarray:
     return np.frombuffer(raw[off:], dtype=np.float32).reshape(n, 4)
 
 
-def render_pair(clean_pcd, corrupt_pcd, lims, title, out_clean, out_corrupt, zeroout):
+def frame_index(stem: str) -> str:
+    """'000000_seq1' -> '000000', matching the KITTI pred/gt filenames."""
+    return stem.split("_")[0]
+
+
+def render_pair(clean_pcd, corrupt_pcd, lims, title, out_clean, out_corrupt, zeroout,
+                kitti_dir: str | None, cond: str, stem: str) -> None:
     clean = read_pcd(clean_pcd)
     render_bev(clean[:, :2], clean[:, 3], lims, f"CLEAN | {title}", out_clean)
 
@@ -86,17 +105,39 @@ def render_pair(clean_pcd, corrupt_pcd, lims, title, out_clean, out_corrupt, zer
     else:
         render_bev(corrupt[:, :2], corrupt[:, 3], lims, f"CORRUPTED | {title}", out_corrupt)
 
+    if kitti_dir is None:
+        return
+    fi = frame_index(stem)
+    img_w, img_h = RADAR_ZO_IMG if zeroout else RADAR_IMG
+
+    gt = parse_kitti_boxes(os.path.join(kitti_dir, "clean", "gts", f"{fi}.txt"))
+
+    clean_preds = parse_kitti_boxes(os.path.join(kitti_dir, "clean", "preds", f"{fi}.txt"))
+    draw_boxes(out_clean, clean_preds, gt, lims, img_w, img_h)
+
+    corrupt_preds_path = os.path.join(kitti_dir, cond, "preds", f"{fi}.txt")
+    if os.path.exists(corrupt_preds_path):
+        corrupt_preds = parse_kitti_boxes(corrupt_preds_path)
+        draw_boxes(out_corrupt, corrupt_preds, gt, lims, img_w, img_h)
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--bundle", default=os.path.expanduser("~/kradar_viewable"))
     ap.add_argument("--dest", default=None, help="default: <bundle>/gallery")
+    ap.add_argument("--kitti-dir", default=None,
+                    help="<dir>/<condition>/{preds,gts}/<frame>.txt -- overlays detected "
+                         "and ground-truth BEV boxes on the radar/lidar renders when set")
     args = ap.parse_args()
 
     bundle = os.path.abspath(os.path.expanduser(args.bundle))
     dest = args.dest or os.path.join(bundle, "gallery")
     img_dir = os.path.join(dest, "img")
     os.makedirs(img_dir, exist_ok=True)
+    kitti_dir = os.path.abspath(os.path.expanduser(args.kitti_dir)) if args.kitti_dir else None
+    if kitti_dir and not os.path.isdir(os.path.join(kitti_dir, "clean")):
+        print(f"WARNING: {kitti_dir}/clean not found -- boxes will not be drawn")
+        kitti_dir = None
 
     conditions = sorted(
         d for d in os.listdir(bundle)
@@ -129,7 +170,8 @@ def main() -> None:
                 k_out, c_out = f"img/{cond}_{stem}_clean.png", f"img/{cond}_{stem}_corrupt.png"
                 lims = RADAR_LIMS if modality == "radar" else LIDAR_LIMS
                 render_pair(clean_src, src, lims, f"{cond} | {stem}",
-                            os.path.join(dest, k_out), os.path.join(dest, c_out), zeroout)
+                            os.path.join(dest, k_out), os.path.join(dest, c_out), zeroout,
+                            kitti_dir, cond, stem)
                 rows.append((stem, k_out, c_out))
 
         sections.append((cond, title, desc, score, rows))
@@ -183,6 +225,20 @@ zero-out-aware renderer (magenta marker + origin inset + counts), matching the e
 <br><br>
 <b>Detection counts</b> are from <code>corruption_summary.csv</code>; see
 <code>outputs/alvis_smoke/RESULTS.md</code> for the full analysis and caveats.
+<br><br>
+<b>Boxes on the radar/LiDAR views:</b> <span style="color:#3cdc3c">solid green</span> = Sedan
+detection, <span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows
+confidence score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel
+always shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that
+condition's own predictions</b> on the corrupted input — so a missing solid box in the
+corrupted panel is a real missed detection, not a rendering gap. Ground truth is identical
+across all conditions (same frame, same objects) and is shown for reference on both panels.
+Two conditions (radar/lidar frame_deletion) crashed the model before writing predictions, so
+their surviving frame shows sensor data only, no boxes.
+<br><br>
+<b>Camera boxes are not shown</b> — the pipeline's KITTI output only carries a placeholder 2D
+bbox (<code>50 50 150 150</code> for every detection), not a real image-plane projection, so
+there is nothing accurate to overlay on the camera frames.
 </div>
 <h2>Summary</h2>
 <table>

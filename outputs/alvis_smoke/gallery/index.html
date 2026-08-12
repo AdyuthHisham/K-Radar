@@ -41,6 +41,20 @@ zero-out-aware renderer (magenta marker + origin inset + counts), matching the e
 <br><br>
 <b>Detection counts</b> are from <code>corruption_summary.csv</code>; see
 <code>outputs/alvis_smoke/RESULTS.md</code> for the full analysis and caveats.
+<br><br>
+<b>Boxes on the radar/LiDAR views:</b> <span style="color:#3cdc3c">solid green</span> = Sedan
+detection, <span style="color:#ffa03c">solid orange</span> = Bus/Truck detection (label shows
+confidence score), <span style="color:#00e6e6">dashed cyan</span> = ground truth. The CLEAN panel
+always shows the <b>clean run's own predictions</b>; the CORRUPTED panel shows <b>that
+condition's own predictions</b> on the corrupted input — so a missing solid box in the
+corrupted panel is a real missed detection, not a rendering gap. Ground truth is identical
+across all conditions (same frame, same objects) and is shown for reference on both panels.
+Two conditions (radar/lidar frame_deletion) crashed the model before writing predictions, so
+their surviving frame shows sensor data only, no boxes.
+<br><br>
+<b>Camera boxes are not shown</b> — the pipeline's KITTI output only carries a placeholder 2D
+bbox (<code>50 50 150 150</code> for every detection), not a real image-plane projection, so
+there is nothing accurate to overlay on the camera frames.
 </div>
 <h2>Summary</h2>
 <table>
