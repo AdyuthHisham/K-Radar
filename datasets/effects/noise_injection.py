@@ -22,6 +22,7 @@ registries or used by NoiseInjector.
 
 from __future__ import annotations
 
+import hashlib
 import io
 from typing import Any, Callable
 
@@ -40,9 +41,29 @@ except ImportError:
 # ──────────────────────────────────────────────
 
 
+def _stable_hash(text: str) -> int:
+    """Process-independent hash of a string.
+
+    Python's builtin hash() is salted per process for str (and any tuple
+    containing one) unless PYTHONHASHSEED is fixed, so it CANNOT be used to
+    derive reproducible seeds across runs. blake2b is stable everywhere.
+    """
+    return int.from_bytes(
+        hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest(), "big"
+    )
+
+
 def _sub_rng(master: np.random.Generator, name: str, seed_offset: int = 0) -> np.random.Generator:
-    """Derive a deterministic sub-generator from the master RNG and effect name."""
-    sub_seed = hash((master.bit_generator.state["state"]["state"], name, seed_offset)) & 0xFFFFFFFF
+    """Derive a deterministic sub-generator from the master RNG and effect name.
+
+    Previously this used ``hash((state, name, seed_offset))``. Because ``name``
+    is a str, that made the sub-seed differ on every process, so two runs of the
+    same config with the same ``seed:`` produced DIFFERENT corruption -- the
+    reproducibility guarantee was silently void. It looked fine in tests, which
+    build both generators inside a single process where the salt is constant.
+    """
+    state = master.bit_generator.state["state"]["state"]
+    sub_seed = _stable_hash(f"{state}|{name}|{seed_offset}") & 0xFFFFFFFF
     return np.random.default_rng(sub_seed)
 
 
@@ -604,7 +625,11 @@ class NoiseInjector:
                     f"Unknown {modality} effect: {name!r}. "
                     f"Available: {list(registry.keys())}"
                 )
-            sub_seed = hash((self.config.seed, modality, name, i)) & 0xFFFFFFFF
+            # Must be a process-stable hash: `modality` and `name` are str, and
+            # builtin hash() is salted per process, which silently voided the
+            # `seed:` reproducibility guarantee -- two runs of the same config
+            # produced different corruption. See _stable_hash.
+            sub_seed = _stable_hash(f"{self.config.seed}|{modality}|{name}|{i}") & 0xFFFFFFFF
             sub_rng = np.random.default_rng(sub_seed)
             resolved.append((name, fn, p, params, sub_rng))
         return resolved

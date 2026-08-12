@@ -897,6 +897,50 @@ def test_kradar_injector_end_to_end():
            f"got {deleted}")
 
 
+def test_seed_reproducible_across_processes():
+    """The same seed must give the same corruption in a DIFFERENT process.
+
+    Regression for the bug where sub-seeds were derived with builtin hash() on
+    strings. CPython salts str hashing per process (PYTHONHASHSEED), so every
+    run produced different corruption while `seed: 42` implied otherwise. The
+    in-process determinism test could never catch it, because both generators
+    there live under the same salt.
+
+    Runs the injector in subprocesses with deliberately different
+    PYTHONHASHSEED values and requires byte-identical output.
+    """
+    import subprocess
+
+    snippet = (
+        "import sys, os, hashlib; sys.path.insert(0, %r);"
+        "import numpy as np;"
+        "from config import Effect, EffectConfig;"
+        "from noise_injection import NoiseInjector;"
+        "cfg = EffectConfig(seed=42, radar=[Effect('loss_partial',1.0,{'fraction':0.5})]);"
+        "d = {'rdr_sparse': np.arange(40, dtype=np.float32).reshape(10,4).copy(),"
+        " 'meta': {'idx': {'rdr': '00182'}}};"
+        "NoiseInjector(cfg)(d, frame_index=0);"
+        "print(hashlib.md5(d['rdr_sparse'].tobytes()).hexdigest())" % _TESTDIR
+    )
+
+    digests = []
+    for salt in ("0", "1", "12345"):
+        env = dict(os.environ, PYTHONHASHSEED=salt)
+        out = subprocess.run([sys.executable, "-c", snippet], env=env,
+                             capture_output=True, text=True)
+        digests.append(out.stdout.strip() or f"<error: {out.stderr.strip()[-200:]}>")
+
+    _check("SEED: corruption identical across PYTHONHASHSEED values",
+           len(set(digests)) == 1, f"digests={digests}")
+
+    # _stable_hash itself must be a fixed function, not merely self-consistent.
+    _check("SEED: _stable_hash is process-independent",
+           _noise_mod._stable_hash("radar|loss_partial|0")
+           == _noise_mod._stable_hash("radar|loss_partial|0"))
+    _check("SEED: _stable_hash differs for different inputs",
+           _noise_mod._stable_hash("a") != _noise_mod._stable_hash("b"))
+
+
 def test_injector_prob_zero():
     """p=0.0 -> no effects applied."""
     config = EffectConfig(
@@ -1193,6 +1237,7 @@ if __name__ == "__main__":
 
     # Real K-Radar meta['idx'] key naming (regression for the silent
     # frame_deletion no-op on lidar / camera)
+    test_seed_reproducible_across_processes()
     test_kradar_meta_idx_resolution()
     test_kradar_frame_deletion_fires_all_modalities()
     test_kradar_injector_end_to_end()

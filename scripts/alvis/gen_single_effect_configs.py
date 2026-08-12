@@ -3,9 +3,17 @@
 
 The robustness study runs each corruption in isolation — one effect, one
 modality, everything else clean — so any change in detections is attributable
-to that single corruption. This emits the 12 configs of the canonical taxonomy
-(4 effects x 3 modalities; see docs/vAIlt/04_Design/noise-injection-design.md)
-into configs/noise/single/.
+to that single corruption. This emits the 9 configs of the canonical taxonomy
+(3 effects x 3 modalities) into configs/noise/single/.
+
+`loss_complete` is deliberately NOT emitted. Per
+docs/vAIlt/04_Design/Noise_Taxonomy.md:19 it is not a separate corruption path:
+it calls _set_none (radar/lidar) or writes the black tensor (camera)
+unconditionally, which is exactly what frame_deletion does behind a frame-index
+gate. `frame_deletion` with `interval: 1` reproduces it exactly. Confirmed
+empirically on the 2026-08-11 sweep, where the loss_complete and frame_deletion
+runs aborted identically for radar and LiDAR and differed only by rate for
+camera.
 
 Parameter values come from outputs/noise_visual_inspection/effect_parameters.yaml
 (the v2 single-level realized parameters), except frame_deletion, which uses
@@ -32,13 +40,6 @@ EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "each radar detection displaced by N(0, 2.0 m); shape preserved"),
         ("loss_partial", {"fraction": 0.5},
          "half the radar detections zeroed in place; row count preserved"),
-        # NOTE: loss_complete is redundant with frame_deletion at interval 1 --
-        # both call _set_none unconditionally vs. behind a frame gate. See
-        # docs/vAIlt/04_Design/Noise_Taxonomy.md:19, which excludes it from the
-        # canonical taxonomy. Kept generated for back-compat; prefer
-        # frame_deletion with `interval: 1` for total sensor failure.
-        ("loss_complete", {},
-         "radar delivers nothing; REDUNDANT with frame_deletion interval:1"),
     ],
     "lidar": [
         ("frame_deletion", {"mode": "deterministic", "interval": 2},
@@ -47,8 +48,6 @@ EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "additive N(0, sigma) on lidar xyz; shape preserved"),
         ("loss_partial", {"fraction": 0.5},
          "half the lidar points zeroed in place; row count preserved"),
-        ("loss_complete", {},
-         "lidar delivers nothing; sets ldr64 to None -> blackout policy applies"),
     ],
     "camera": [
         ("frame_deletion", {"mode": "deterministic", "interval": 2},
@@ -57,8 +56,6 @@ EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "additive N(0, 40) in 0-255 image units"),
         ("loss_partial", {"fraction": 0.3},
          "a contiguous 30% rectangle of the image blacked out"),
-        ("loss_complete", {},
-         "camera dead; writes a black-image tensor, never None"),
     ],
 }
 
