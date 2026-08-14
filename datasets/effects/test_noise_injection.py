@@ -1,9 +1,9 @@
 """
 Standalone unit tests for the noise-injection module (Rev 2 taxonomy).
 
-Tests all 12 effects:
-  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete
-  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete
+Tests all 14 effects:
+  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete, loss_complete_zero
+  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete, loss_complete_zero
   Camera:    frame_deletion, gaussian_noise,        loss_partial, loss_complete
 
 Plus injector integration tests and legacy-import compatibility check.
@@ -41,10 +41,12 @@ radar_frame_deletion       = _noise_mod.radar_frame_deletion
 radar_noise_induced_shifts = _noise_mod.radar_noise_induced_shifts
 radar_loss_partial         = _noise_mod.radar_loss_partial
 radar_loss_complete        = _noise_mod.radar_loss_complete
+radar_loss_complete_zero   = _noise_mod.radar_loss_complete_zero
 lidar_frame_deletion       = _noise_mod.lidar_frame_deletion
 lidar_gaussian_noise       = _noise_mod.lidar_gaussian_noise
 lidar_loss_partial         = _noise_mod.lidar_loss_partial
 lidar_loss_complete        = _noise_mod.lidar_loss_complete
+lidar_loss_complete_zero   = _noise_mod.lidar_loss_complete_zero
 camera_frame_deletion      = _noise_mod.camera_frame_deletion
 camera_gaussian_noise      = _noise_mod.camera_gaussian_noise
 camera_loss_partial        = _noise_mod.camera_loss_partial
@@ -381,6 +383,43 @@ def test_radar_loss_partial_vs_complete_distinction():
            d_complete["rdr_sparse"] is None)
 
 
+def test_radar_loss_complete_zero():
+    """R5: zero-array complete loss zero-fills radar keys in place, not None."""
+    rng = np.random.default_rng(208)
+    d = _make_dict_item()
+    n_sparse = len(d["rdr_sparse"])
+    shape_polar = d["rdr_polar_3d"].shape
+    d = radar_loss_complete_zero(d, {}, rng)
+    _check("R5 zero: rdr_sparse is all-zero array, not None",
+           d["rdr_sparse"] is not None
+           and len(d["rdr_sparse"]) == n_sparse
+           and np.all(d["rdr_sparse"] == 0))
+    _check("R5 zero: rdr_polar_3d is all-zero array, not None",
+           d["rdr_polar_3d"] is not None
+           and d["rdr_polar_3d"].shape == shape_polar
+           and np.all(d["rdr_polar_3d"] == 0))
+    _check("R5 zero: pc100p NOT modified",
+           d["pc100p"] is not None)
+
+
+def test_radar_loss_complete_vs_loss_complete_zero():
+    """loss_complete -> None; loss_complete_zero -> zero array, same shape."""
+    rng = np.random.default_rng(209)
+    d_none = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    d_zero = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    n = len(d_none["rdr_sparse"])
+
+    d_none = radar_loss_complete(d_none, {}, rng)
+    d_zero = radar_loss_complete_zero(d_zero, {}, rng)
+
+    _check("R4 vs R5: loss_complete -> None",
+           d_none["rdr_sparse"] is None)
+    _check("R4 vs R5: loss_complete_zero -> zero array, shape preserved",
+           isinstance(d_zero["rdr_sparse"], np.ndarray)
+           and len(d_zero["rdr_sparse"]) == n
+           and np.all(d_zero["rdr_sparse"] == 0))
+
+
 # ══════════════════════════════════════════════
 # LIDAR TESTS
 # ══════════════════════════════════════════════
@@ -504,6 +543,39 @@ def test_lidar_loss_complete():
     d = lidar_loss_complete(d, {}, rng)
     _check("L4 complete: ldr64 is None",
            d["ldr64"] is None)
+
+
+def test_lidar_loss_complete_zero():
+    """L5: zero-array complete loss zero-fills ldr64 in place, not None."""
+    rng = np.random.default_rng(211)
+    d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                         with_camera=False)
+    n = len(d["ldr64"])
+    d = lidar_loss_complete_zero(d, {}, rng)
+    _check("L5 zero: ldr64 is all-zero array, not None",
+           d["ldr64"] is not None
+           and len(d["ldr64"]) == n
+           and np.all(d["ldr64"] == 0))
+
+
+def test_lidar_loss_complete_vs_loss_complete_zero():
+    """loss_complete -> None; loss_complete_zero -> zero array, same shape."""
+    rng = np.random.default_rng(212)
+    d_none = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                              with_camera=False)
+    d_zero = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
+                              with_camera=False)
+    n = len(d_none["ldr64"])
+
+    d_none = lidar_loss_complete(d_none, {}, rng)
+    d_zero = lidar_loss_complete_zero(d_zero, {}, rng)
+
+    _check("L4 vs L5: loss_complete -> None",
+           d_none["ldr64"] is None)
+    _check("L4 vs L5: loss_complete_zero -> zero array, shape preserved",
+           isinstance(d_zero["ldr64"], np.ndarray)
+           and len(d_zero["ldr64"]) == n
+           and np.all(d_zero["ldr64"] == 0))
 
 
 # ══════════════════════════════════════════════
@@ -677,12 +749,12 @@ def test_camera_loss_partial_cross_channel_independence():
 
 
 def test_registry_counts():
-    """Each modality registry has exactly 4 effects."""
-    _check("REG: radar has 4 effects",
-           len(RADAR_EFFECTS) == 4,
+    """Radar/lidar registries have 5 effects (incl. loss_complete_zero); camera has 4."""
+    _check("REG: radar has 5 effects",
+           len(RADAR_EFFECTS) == 5,
            f"got {len(RADAR_EFFECTS)}: {list(RADAR_EFFECTS.keys())}")
-    _check("REG: lidar has 4 effects",
-           len(LIDAR_EFFECTS) == 4,
+    _check("REG: lidar has 5 effects",
+           len(LIDAR_EFFECTS) == 5,
            f"got {len(LIDAR_EFFECTS)}: {list(LIDAR_EFFECTS.keys())}")
     _check("REG: camera has 4 effects",
            len(CAMERA_EFFECTS) == 4,
@@ -691,8 +763,10 @@ def test_registry_counts():
 
 def test_registry_effect_names():
     """Registries contain exactly the expected effect names."""
-    expected_radar = {"frame_deletion", "noise_induced_shifts", "loss_partial", "loss_complete"}
-    expected_lidar = {"frame_deletion", "gaussian_noise", "loss_partial", "loss_complete"}
+    expected_radar = {"frame_deletion", "noise_induced_shifts", "loss_partial",
+                       "loss_complete", "loss_complete_zero"}
+    expected_lidar = {"frame_deletion", "gaussian_noise", "loss_partial",
+                       "loss_complete", "loss_complete_zero"}
     expected_camera = {"frame_deletion", "gaussian_noise", "loss_partial", "loss_complete"}
 
     _check("REG: radar names match",
@@ -725,11 +799,12 @@ def test_default_ordering():
     _check("REG: frame_deletion first in camera default",
            DEFAULT_ORDER_CAMERA[0] == "frame_deletion")
 
-    # Loss complete should be last in all defaults
-    _check("REG: loss_complete last in radar default",
-           DEFAULT_ORDER_RADAR[-1] == "loss_complete")
-    _check("REG: loss_complete last in lidar default",
-           DEFAULT_ORDER_LIDAR[-1] == "loss_complete")
+    # An unconditional blackout effect should be last in all defaults
+    # (radar/lidar now end on loss_complete_zero, appended after loss_complete)
+    _check("REG: loss_complete_zero last in radar default",
+           DEFAULT_ORDER_RADAR[-1] == "loss_complete_zero")
+    _check("REG: loss_complete_zero last in lidar default",
+           DEFAULT_ORDER_LIDAR[-1] == "loss_complete_zero")
     _check("REG: loss_complete last in camera default",
            DEFAULT_ORDER_CAMERA[-1] == "loss_complete")
 
@@ -1199,12 +1274,16 @@ if __name__ == "__main__":
     test_radar_loss_partial()
     test_radar_loss_complete()
     test_radar_loss_partial_vs_complete_distinction()
+    test_radar_loss_complete_zero()
+    test_radar_loss_complete_vs_loss_complete_zero()
 
     # LiDAR
     test_lidar_frame_deletion()
     test_lidar_gaussian_noise()
     test_lidar_loss_partial()
     test_lidar_loss_complete()
+    test_lidar_loss_complete_zero()
+    test_lidar_loss_complete_vs_loss_complete_zero()
 
     # Camera
     test_camera_frame_deletion()

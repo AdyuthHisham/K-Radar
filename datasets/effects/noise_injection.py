@@ -10,10 +10,17 @@ Data-structure conventions (from K-Radar Fusion dataset):
     ldr64         : (N, M)   numpy — [x, y, z, intensity, ring, ...] (M >= 3)
     camera img    : (3, H, W) torch.Tensor — ToTensor() + Normalize(dset_mean, dset_std)
 
-TAXONOMY (Rev 2): 12 effects, 4 per modality:
-  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete
-  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete
+TAXONOMY (Rev 2): 14 effects — 5 for radar/lidar, 4 for camera:
+  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete, loss_complete_zero
+  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete, loss_complete_zero
   Camera:    frame_deletion, gaussian_noise,        loss_partial, loss_complete
+
+loss_complete vs loss_complete_zero (radar/lidar only): loss_complete sets the
+sensor key(s) to None, resolved later by NoiseInjectedDataset's blackout_policy
+at the wrapper level. loss_complete_zero instead zero-fills the array in place
+at injection time (shape/dtype preserved) — the model always sees a present,
+well-formed all-zero tensor. Camera's loss_complete is already zero-tensor
+based (image tensors can't be None downstream), so no camera analogue is needed.
 
 Legacy effects from Rev 1 (18-effect design) are preserved below under
 "# LEGACY EFFECTS" for manual import but are NOT loaded into the active
@@ -275,6 +282,24 @@ def radar_loss_complete(dict_item: dict, params: dict, rng: np.random.Generator)
     return dict_item
 
 
+def radar_loss_complete_zero(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
+    """R5 — Full radar data blackout as an all-zero array, instead of None.
+
+    Distinct from ``loss_complete``: that effect sets sensor keys to None,
+    which NoiseInjectedDataset resolves per its blackout_policy at the
+    dataset-wrapper level. This effect instead zero-fills the array in place
+    at injection time, preserving shape/dtype — the downstream model always
+    sees a present, well-formed (all-zero) tensor rather than a None it must
+    special-case.
+
+    Parameters: (none required)
+    """
+    for key in ["rdr_sparse", "rdr_polar_3d"]:
+        if _has_key(dict_item, key):
+            dict_item[key] = np.zeros_like(dict_item[key])
+    return dict_item
+
+
 # ──────────────────────────────────────────────
 # LIDAR EFFECTS  (4 effects)
 # ──────────────────────────────────────────────
@@ -364,6 +389,19 @@ def lidar_loss_complete(dict_item: dict, params: dict, rng: np.random.Generator)
     Parameters: (none required)
     """
     _set_none(dict_item, ["ldr64"])
+    return dict_item
+
+
+def lidar_loss_complete_zero(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
+    """L5 — Full LiDAR blackout as an all-zero array, instead of None.
+
+    Distinct from ``loss_complete`` (see ``radar_loss_complete_zero`` docstring
+    for the None-vs-zero-array rationale).
+
+    Parameters: (none required)
+    """
+    if _has_key(dict_item, "ldr64"):
+        dict_item["ldr64"] = np.zeros_like(dict_item["ldr64"])
     return dict_item
 
 
@@ -509,6 +547,7 @@ RADAR_EFFECTS: dict[str, Callable] = {
     "noise_induced_shifts": radar_noise_induced_shifts,
     "loss_partial":         radar_loss_partial,
     "loss_complete":        radar_loss_complete,
+    "loss_complete_zero":   radar_loss_complete_zero,
 }
 
 LIDAR_EFFECTS: dict[str, Callable] = {
@@ -516,6 +555,7 @@ LIDAR_EFFECTS: dict[str, Callable] = {
     "gaussian_noise":       lidar_gaussian_noise,
     "loss_partial":         lidar_loss_partial,
     "loss_complete":        lidar_loss_complete,
+    "loss_complete_zero":   lidar_loss_complete_zero,
 }
 
 CAMERA_EFFECTS: dict[str, Callable] = {
@@ -538,14 +578,16 @@ DEFAULT_ORDER_RADAR = [
     "frame_deletion",       # R1 — first, so other effects skip if frame gone
     "noise_induced_shifts", # R2
     "loss_partial",         # R3
-    "loss_complete",        # R4 — last (unconditional blackout)
+    "loss_complete",        # R4 — unconditional None-blackout
+    "loss_complete_zero",   # R5 — unconditional all-zero-array blackout
 ]
 
 DEFAULT_ORDER_LIDAR = [
     "frame_deletion",       # L1
     "gaussian_noise",       # L2
     "loss_partial",         # L3
-    "loss_complete",        # L4
+    "loss_complete",        # L4 — unconditional None-blackout
+    "loss_complete_zero",   # L5 — unconditional all-zero-array blackout
 ]
 
 DEFAULT_ORDER_CAMERA = [
