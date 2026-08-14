@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
-"""Generate one noise-config YAML per (modality, effect) pair.
+"""Generate low/high-severity noise-config YAML pairs, one per (modality, effect).
 
-The robustness study runs each corruption in isolation — one effect, one
-modality, everything else clean — so any change in detections is attributable
-to that single corruption. This emits the 9 configs of the canonical taxonomy
-(3 effects x 3 modalities) into configs/noise/single/.
+The robustness sweep runs each corruption in isolation at two severity levels
+-- one effect, one modality, one severity, everything else original -- so any
+change in detections is attributable to that single corruption at that
+intensity. Emits:
+  - 18 low/high pairs (9 effects x 2 severities): radar frame_deletion,
+    noise_induced_shifts, loss_partial; lidar frame_deletion, gaussian_noise,
+    loss_partial; camera frame_deletion, gaussian_noise, loss_partial.
+  - 2 unconditional configs (no severity split, no params): radar and lidar
+    loss_complete_zero -- distinct from `loss_complete` (see below).
 
-`loss_complete` is deliberately NOT emitted. Per
-docs/vAIlt/04_Design/Noise_Taxonomy.md:19 it is not a separate corruption path:
-it calls _set_none (radar/lidar) or writes the black tensor (camera)
-unconditionally, which is exactly what frame_deletion does behind a frame-index
-gate. `frame_deletion` with `interval: 1` reproduces it exactly. Confirmed
-empirically on the 2026-08-11 sweep, where the loss_complete and frame_deletion
-runs aborted identically for radar and LiDAR and differed only by rate for
-camera.
+`loss_complete` (the None-setting variant) is deliberately NOT emitted, same
+as before. Per docs/vAIlt/04_Design/Noise_Taxonomy.md:19 and this generator's
+prior empirical finding (2026-08-11 sweep), it is redundant with
+`frame_deletion(p=1.0)` for radar/lidar -- both call _set_none unconditionally
+when fired, and aborted identically in that sweep. `loss_complete_zero` (added
+2026-08-14) is NOT redundant with frame_deletion: it zero-fills the sensor
+array in place instead of setting it to None, so the model sees a present,
+well-formed all-zero tensor rather than a missing key resolved later by
+blackout_policy. Camera's own `loss_complete` is already zero-tensor based
+(no `_zero` camera variant needed).
 
-Parameter values come from outputs/noise_visual_inspection/effect_parameters.yaml
-(the v2 single-level realized parameters), except frame_deletion, which uses
-`interval: 2` rather than the visual-inspection `index_list: [0]` so that on a
-short run it actually fires on more than one frame. Note frame_deletion keys
-off the real K-Radar sensor index in meta['idx'][modality], not the 0..N-1
-loop counter.
+Severity values come from docs/vAIlt/06_Results/noise-visual-inspection-
+severity-levels-report.md (the low/high severity-study doc), NOT
+outputs/noise_visual_inspection/effect_parameters.yaml's single realized
+values -- the two disagree on some effects (radar noise_induced_shifts,
+lidar gaussian_noise, loss_partial fractions); the severity-report values were
+chosen deliberately for the sweep, confirmed 2026-08-14.
+
+`frame_deletion` uses `mode: random, p: <low|high>` (not the previous
+`mode: deterministic, interval: 2`) to match the severity table's
+probability-based parameterization.
 
 Usage:
     python scripts/alvis/gen_single_effect_configs.py
@@ -31,42 +42,62 @@ import os
 
 OUT_DIR = os.path.join("configs", "noise", "single")
 
-# (effect_name, params, note) per modality.
-EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
+# (effect_name, {"low": params, "high": params}, note) per modality.
+SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
     "radar": [
-        ("frame_deletion", {"mode": "deterministic", "interval": 2},
-         "radar drops every 2nd frame; sets rdr_sparse to None -> blackout policy applies"),
-        ("noise_induced_shifts", {"shift_std": 2.0, "distribution": "gaussian"},
-         "each radar detection displaced by N(0, 2.0 m); shape preserved"),
-        ("loss_partial", {"fraction": 0.5},
-         "half the radar detections zeroed in place; row count preserved"),
+        ("frame_deletion",
+         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         "radar frame randomly deleted with probability p; sets rdr_sparse to None -> blackout policy applies"),
+        ("noise_induced_shifts",
+         {"low": {"shift_std": 0.01, "distribution": "gaussian"},
+          "high": {"shift_std": 5.0, "distribution": "gaussian"}},
+         "each radar detection displaced by N(0, shift_std); shape preserved"),
+        ("loss_partial",
+         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         "fraction of radar detections zeroed in place; row count preserved"),
     ],
     "lidar": [
-        ("frame_deletion", {"mode": "deterministic", "interval": 2},
-         "lidar drops every 2nd frame; sets ldr64 to None -> blackout policy applies"),
-        ("gaussian_noise", {"sigma_xy": 0.5, "sigma_z": 0.2},
+        ("frame_deletion",
+         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         "lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies"),
+        ("gaussian_noise",
+         {"low": {"sigma_xy": 0.01, "sigma_z": 0.01}, "high": {"sigma_xy": 1.0, "sigma_z": 1.0}},
          "additive N(0, sigma) on lidar xyz; shape preserved"),
-        ("loss_partial", {"fraction": 0.5},
-         "half the lidar points zeroed in place; row count preserved"),
+        ("loss_partial",
+         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         "fraction of lidar points zeroed in place; row count preserved"),
     ],
     "camera": [
-        ("frame_deletion", {"mode": "deterministic", "interval": 2},
-         "camera drops every 2nd frame; writes a black-image tensor, never None"),
-        ("gaussian_noise", {"sigma": 40},
-         "additive N(0, 40) in 0-255 image units"),
-        ("loss_partial", {"fraction": 0.3},
-         "a contiguous 30% rectangle of the image blacked out"),
+        ("frame_deletion",
+         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         "camera frame randomly deleted with probability p; writes a black-image tensor, never None"),
+        ("gaussian_noise",
+         {"low": {"sigma": 1.0}, "high": {"sigma": 40}},
+         "additive N(0, sigma) in 0-255 image units"),
+        ("loss_partial",
+         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         "fraction of the image (contiguous rectangle) blacked out"),
     ],
 }
 
+# (modality, effect, note) -- unconditional, no severity split, no params.
+UNCONDITIONAL_EFFECTS: list[tuple[str, str, str]] = [
+    ("radar", "loss_complete_zero",
+     "radar sensor alive but every reading zero-filled in place (distinct from "
+     "loss_complete, which sets the key to None)"),
+    ("lidar", "loss_complete_zero",
+     "lidar sensor alive but every reading zero-filled in place (distinct from "
+     "loss_complete, which sets the key to None)"),
+]
+
 HEADER = """\
-# Single-corruption run: {modality} / {effect}
+# Single-corruption run: {modality} / {effect}{severity_suffix}
 #
 # {note}
 #
-# Exactly one effect on exactly one modality -- every other sensor is clean --
-# so any change in detections versus the clean baseline is attributable to this
-# corruption alone. Generated by scripts/alvis/gen_single_effect_configs.py;
+# Exactly one effect on exactly one modality -- every other sensor is original
+# -- so any change in detections versus the original baseline is attributable
+# to this corruption alone. Generated by scripts/alvis/gen_single_effect_configs.py;
 # edit that file rather than this one.
 seed: 42
 """
@@ -81,22 +112,37 @@ def _fmt_params(params: dict) -> str:
     return "".join(lines)
 
 
+def _write_config(path: str, modality: str, effect: str, params: dict, note: str,
+                   severity: str | None) -> None:
+    severity_suffix = f" ({severity})" if severity else ""
+    body = HEADER.format(modality=modality, effect=effect, note=note,
+                          severity_suffix=severity_suffix)
+    for m in ("radar", "lidar", "camera"):
+        if m != modality:
+            body += f"{m}: []\n"
+            continue
+        body += f"{m}:\n  - name: {effect}\n    p: 1.0\n"
+        body += _fmt_params(params)
+    with open(path, "w") as f:
+        f.write(body)
+
+
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
     written = []
-    for modality, effects in EFFECTS.items():
-        for effect, params, note in effects:
-            body = HEADER.format(modality=modality, effect=effect, note=note)
-            for m in ("radar", "lidar", "camera"):
-                if m != modality:
-                    body += f"{m}: []\n"
-                    continue
-                body += f"{m}:\n  - name: {effect}\n    p: 1.0\n"
-                body += _fmt_params(params)
-            path = os.path.join(OUT_DIR, f"{modality}_{effect}.yml")
-            with open(path, "w") as f:
-                f.write(body)
-            written.append(path)
+
+    for modality, effects in SEVERITY_EFFECTS.items():
+        for effect, severities, note in effects:
+            for severity, params in severities.items():
+                path = os.path.join(OUT_DIR, f"{modality}_{effect}_{severity}.yml")
+                _write_config(path, modality, effect, params, note, severity)
+                written.append(path)
+
+    for modality, effect, note in UNCONDITIONAL_EFFECTS:
+        path = os.path.join(OUT_DIR, f"{modality}_{effect}.yml")
+        _write_config(path, modality, effect, {}, note, None)
+        written.append(path)
+
     print(f"Wrote {len(written)} configs to {OUT_DIR}/")
     for p in sorted(written):
         print(f"  {p}")
