@@ -125,7 +125,9 @@ apptainer exec --nv --bind "$BINDS" "$SIF" bash -c "
   export PYTHONPATH=/opt/K-Radar:\$PYTHONPATH
   export TMPDIR=/opt/K-Radar/logs/tmp
   mkdir -p \$TMPDIR
-  export KRADAR_EVAL_GPU_IOU=1
+  # Do NOT set KRADAR_EVAL_GPU_IOU=1: that opts into a numba @cuda.jit
+  # rotated-IoU kernel in nms_gpu.py which SIGSEGVs on driver mismatch
+  # (see utils/kitti_eval/eval_revised.py:13-19). Leave unset -> CPU fallback.
   python scripts/main_cond_0_args.py \
     --config $CONFIG \
     --model /opt/K-Radar/run_ckpt.pt \
@@ -136,7 +138,7 @@ set -e
 
 echo '--- prediction files written ---'
 NPRED=$(find "$OUT" -path '*all/preds/*.txt' | wc -l)
-echo "--- count: $NPRED (expected 598 for full sequence 46) ---"
+echo "--- count: $NPRED (expected 300 for sequence 46 after class/ROI/remove_0_obj filtering; 598 raw label files) ---"
 echo "--- sensor dump: $(find "$OUT/sensor_dump" -type f 2>/dev/null | wc -l) file(s) ---"
 echo '--- AP results ---'
 find "$OUT" -name 'complete_results.txt' -exec echo {} \; -exec cat {} \;
