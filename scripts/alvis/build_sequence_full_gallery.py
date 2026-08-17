@@ -52,6 +52,29 @@ CAM_IMG = (704, 256)
 CAM_RESIZE = 0.7
 CAM_CROP = (96, 170, 800, 426)
 
+# render_bev draws points via a per-point Python loop (cv2.circle + a Python
+# colormap call per point, datasets/effects/visualize_effects_v2.py:276-291)
+# -- O(n) Python-level overhead, not vectorized. Fine for a handful of
+# renders, but this script does hundreds (conditions x frames x modalities),
+# and radar frames alone carry up to ~150k points. Subsample here, at the
+# call site, rather than touching render_bev itself (shared with the smoke
+# and noise-visual-inspection galleries) -- this is a visual gallery, not the
+# metric computation, so plotting a representative subset is not a
+# correctness issue.
+MAX_RENDER_POINTS = 20000
+_subsample_rng = np.random.default_rng(42)
+
+
+def _subsample(arr: np.ndarray, cap: int = MAX_RENDER_POINTS) -> tuple[np.ndarray, str]:
+    """Returns (possibly-subsampled array, title suffix noting the true
+    count when subsampled -- render_bev's own "N pts" label would otherwise
+    silently report the capped count, not the true one)."""
+    n = len(arr)
+    if n <= cap:
+        return arr, ""
+    idx = _subsample_rng.choice(n, size=cap, replace=False)
+    return arr[idx], f" ({n} pts, {cap} shown)"
+
 
 def find_kitti_dirs(run_dir: str) -> tuple[str, str] | None:
     matches = glob.glob(os.path.join(run_dir, "exp_*", "test_kitti", "*", "*", "all", "preds"))
@@ -93,16 +116,16 @@ def render_original_frame(fid: str, stem: str, dump_dir: str, out_dir: str,
     """Render the shared ORIGINAL panels for one frame, sourced from a
     corrupted condition's pre-injection "_clean" backups (see module
     docstring)."""
-    rdr = np.load(os.path.join(dump_dir, f"{stem}_rdr_sparse_clean.npy"))
-    ldr = np.load(os.path.join(dump_dir, f"{stem}_ldr64_clean.npy"))
+    rdr, rdr_sfx = _subsample(np.load(os.path.join(dump_dir, f"{stem}_rdr_sparse_clean.npy")))
+    ldr, ldr_sfx = _subsample(np.load(os.path.join(dump_dir, f"{stem}_ldr64_clean.npy")))
 
     radar_path = os.path.join(out_dir, f"{fid}_radar_original.png")
-    render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar ORIGINAL | {fid}",
+    render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar ORIGINAL | {fid}{rdr_sfx}",
                radar_path, img_w=RADAR_IMG[0], img_h=RADAR_IMG[1])
     draw_boxes(radar_path, preds, gt, RADAR_LIMS, RADAR_IMG[0], RADAR_IMG[1])
 
     lidar_path = os.path.join(out_dir, f"{fid}_lidar_original.png")
-    render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar ORIGINAL | {fid}",
+    render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar ORIGINAL | {fid}{ldr_sfx}",
                lidar_path, img_w=LIDAR_IMG[0], img_h=LIDAR_IMG[1])
     draw_boxes(lidar_path, preds, gt, LIDAR_LIMS, LIDAR_IMG[0], LIDAR_IMG[1])
 
@@ -145,18 +168,18 @@ def render_corrupted_frame(fid: str, stem: str, dump_dir: str, out_dir: str, con
 
     rdr_path = os.path.join(dump_dir, f"{stem}_rdr_sparse.npy")
     if os.path.exists(rdr_path):
-        rdr = np.load(rdr_path)
+        rdr, rdr_sfx = _subsample(np.load(rdr_path))
         out_path = os.path.join(out_dir, f"{condition}_{fid}_radar.png")
-        render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar {condition} | {fid}",
+        render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar {condition} | {fid}{rdr_sfx}",
                    out_path, img_w=RADAR_IMG[0], img_h=RADAR_IMG[1])
         draw_boxes(out_path, preds, gt, RADAR_LIMS, RADAR_IMG[0], RADAR_IMG[1])
         result["radar"] = b64_file(out_path)
 
     ldr_path = os.path.join(dump_dir, f"{stem}_ldr64.npy")
     if os.path.exists(ldr_path):
-        ldr = np.load(ldr_path)
+        ldr, ldr_sfx = _subsample(np.load(ldr_path))
         out_path = os.path.join(out_dir, f"{condition}_{fid}_lidar.png")
-        render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar {condition} | {fid}",
+        render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar {condition} | {fid}{ldr_sfx}",
                    out_path, img_w=LIDAR_IMG[0], img_h=LIDAR_IMG[1])
         draw_boxes(out_path, preds, gt, LIDAR_LIMS, LIDAR_IMG[0], LIDAR_IMG[1])
         result["lidar"] = b64_file(out_path)
