@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Generate low/high-severity noise-config YAML pairs, one per (modality, effect).
+"""Generate low/medium/high-severity noise-config YAML triples, one per
+(modality, effect).
 
-The robustness sweep runs each corruption in isolation at two severity levels
--- one effect, one modality, one severity, everything else original -- so any
-change in detections is attributable to that single corruption at that
+The robustness sweep runs each corruption in isolation at three severity
+levels -- one effect, one modality, one severity, everything else original --
+so any change in detections is attributable to that single corruption at that
 intensity. Emits:
-  - 18 low/high pairs (9 effects x 2 severities): radar frame_deletion,
-    noise_induced_shifts, loss_partial; lidar frame_deletion, gaussian_noise,
-    loss_partial; camera frame_deletion, gaussian_noise, loss_partial.
+  - 27 low/medium/high triples (9 effects x 3 severities): radar
+    frame_deletion, noise_induced_shifts, loss_partial; lidar frame_deletion,
+    gaussian_noise, loss_partial; camera frame_deletion, gaussian_noise,
+    loss_partial.
   - 2 unconditional configs (no severity split, no params): radar and lidar
     loss_complete_zero -- distinct from `loss_complete` (see below).
 
@@ -23,13 +25,17 @@ blackout_policy. Camera's own `loss_complete` is already zero-tensor based
 (no `_zero` camera variant needed).
 
 Severity values come from docs/vAIlt/06_Results/noise-visual-inspection-
-severity-levels-report.md (the low/high severity-study doc), NOT
+severity-levels-report.md's full low/medium/high table, NOT
 outputs/noise_visual_inspection/effect_parameters.yaml's single realized
-values -- the two disagree on some effects (radar noise_induced_shifts,
-lidar gaussian_noise, loss_partial fractions); the severity-report values were
-chosen deliberately for the sweep, confirmed 2026-08-14.
+values. Confirmed 2026-08-14/17: camera gaussian_noise's medium=40/high=50
+match the doc exactly (an earlier 2-severity sweep this session had used
+sigma=40 as "high", overriding the doc's own high=50, per explicit
+instruction at the time -- now superseded: with a third tier added, 40
+becomes "medium" and 50 becomes "high", consistent with the doc throughout,
+confirmed 2026-08-17). Every other effect's low/high values already matched
+the doc; medium is new for all of them.
 
-`frame_deletion` uses `mode: random, p: <low|high>` (not the previous
+`frame_deletion` uses `mode: random, p: <low|medium|high>` (not the earlier
 `mode: deterministic, interval: 2`) to match the severity table's
 probability-based parameterization.
 
@@ -42,40 +48,45 @@ import os
 
 OUT_DIR = os.path.join("configs", "noise", "single")
 
-# (effect_name, {"low": params, "high": params}, note) per modality.
+# (effect_name, {"low": params, "medium": params, "high": params}, note) per modality.
 SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
     "radar": [
         ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
+          "high": {"mode": "random", "p": 0.9}},
          "radar frame randomly deleted with probability p; sets rdr_sparse to None -> blackout policy applies"),
         ("noise_induced_shifts",
          {"low": {"shift_std": 0.01, "distribution": "gaussian"},
+          "medium": {"shift_std": 1.0, "distribution": "gaussian"},
           "high": {"shift_std": 5.0, "distribution": "gaussian"}},
          "each radar detection displaced by N(0, shift_std); shape preserved"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
          "fraction of radar detections zeroed in place; row count preserved"),
     ],
     "lidar": [
         ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
+          "high": {"mode": "random", "p": 0.9}},
          "lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies"),
         ("gaussian_noise",
-         {"low": {"sigma_xy": 0.01, "sigma_z": 0.01}, "high": {"sigma_xy": 1.0, "sigma_z": 1.0}},
+         {"low": {"sigma_xy": 0.01, "sigma_z": 0.01}, "medium": {"sigma_xy": 0.5, "sigma_z": 0.2},
+          "high": {"sigma_xy": 1.0, "sigma_z": 1.0}},
          "additive N(0, sigma) on lidar xyz; shape preserved"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
          "fraction of lidar points zeroed in place; row count preserved"),
     ],
     "camera": [
         ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "high": {"mode": "random", "p": 0.9}},
+         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
+          "high": {"mode": "random", "p": 0.9}},
          "camera frame randomly deleted with probability p; writes a black-image tensor, never None"),
         ("gaussian_noise",
-         {"low": {"sigma": 1.0}, "high": {"sigma": 40}},
+         {"low": {"sigma": 1.0}, "medium": {"sigma": 40.0}, "high": {"sigma": 50.0}},
          "additive N(0, sigma) in 0-255 image units"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
          "fraction of the image (contiguous rectangle) blacked out"),
     ],
 }

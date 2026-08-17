@@ -1,6 +1,6 @@
-# Single-corruption run: camera / gaussian_noise (high)
+# Single-corruption run: lidar / loss_partial (medium)
 #
-# additive N(0, sigma) in 0-255 image units
+# fraction of lidar points zeroed in place; row count preserved
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -8,9 +8,9 @@
 # edit that file rather than this one.
 seed: 42
 radar: []
-lidar: []
-camera:
-  - name: gaussian_noise
+lidar:
+  - name: loss_partial
     p: 1.0
     params:
-      sigma: 50.0
+      fraction: 0.3
+camera: []
