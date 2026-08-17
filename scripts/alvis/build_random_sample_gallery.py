@@ -236,11 +236,11 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
         parts.append(f'<div class="frame"><div class="frame-head">SEQ {seq} &middot; FRAME {fid} &middot; '
                      f'GT {o["gt_count"]} &middot; PRED {o["pred_count"]}</div>\n'
                      f'<div class="orig-grid">\n'
-                     f'<figure><img src="data:image/png;base64,{o["radar"]}"><figcaption>radar</figcaption></figure>\n'
-                     f'<figure><img src="data:image/png;base64,{o["lidar"]}"><figcaption>lidar</figcaption></figure>\n'
-                     f'<figure><img src="data:image/png;base64,{o["camera"]}"><figcaption>camera front0</figcaption></figure>\n')
+                     f'<figure><img src="data:image/jpeg;base64,{o["radar"]}"><figcaption>radar</figcaption></figure>\n'
+                     f'<figure><img src="data:image/jpeg;base64,{o["lidar"]}"><figcaption>lidar</figcaption></figure>\n'
+                     f'<figure><img src="data:image/jpeg;base64,{o["camera"]}"><figcaption>camera front0</figcaption></figure>\n')
         if "cam_front1" in o:
-            parts.append(f'<figure><img src="data:image/png;base64,{o["cam_front1"]}">'
+            parts.append(f'<figure><img src="data:image/jpeg;base64,{o["cam_front1"]}">'
                          f'<figcaption>camera front1 (unused by ASF)</figcaption></figure>\n')
         parts.append('</div></div>\n')
     parts.append('</div>\n')
@@ -267,9 +267,9 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
                     "ldr64" if modality == "lidar" else "front0", None)
                 corrupt_label = "corrupted" if changed else "original (identical input)"
                 parts.append(f'<div class="pair">\n'
-                             f'<figure><img src="data:image/png;base64,{o[modality]}">'
+                             f'<figure><img src="data:image/jpeg;base64,{o[modality]}">'
                              f'<figcaption>{label} original</figcaption></figure>\n'
-                             f'<figure><img src="data:image/png;base64,{cf[modality]}">'
+                             f'<figure><img src="data:image/jpeg;base64,{cf[modality]}">'
                              f'<figcaption>{label} {corrupt_label}</figcaption></figure>\n'
                              f'</div>\n')
             parts.append('</div>\n')

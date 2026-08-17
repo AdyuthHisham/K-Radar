@@ -119,17 +119,17 @@ def render_original_frame(fid: str, stem: str, dump_dir: str, out_dir: str,
     rdr, rdr_sfx = _subsample(np.load(os.path.join(dump_dir, f"{stem}_rdr_sparse_clean.npy")))
     ldr, ldr_sfx = _subsample(np.load(os.path.join(dump_dir, f"{stem}_ldr64_clean.npy")))
 
-    radar_path = os.path.join(out_dir, f"{fid}_radar_original.png")
+    radar_path = os.path.join(out_dir, f"{fid}_radar_original.jpg")
     render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar ORIGINAL | {fid}{rdr_sfx}",
                radar_path, img_w=RADAR_IMG[0], img_h=RADAR_IMG[1])
     draw_boxes(radar_path, preds, gt, RADAR_LIMS, RADAR_IMG[0], RADAR_IMG[1])
 
-    lidar_path = os.path.join(out_dir, f"{fid}_lidar_original.png")
+    lidar_path = os.path.join(out_dir, f"{fid}_lidar_original.jpg")
     render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar ORIGINAL | {fid}{ldr_sfx}",
                lidar_path, img_w=LIDAR_IMG[0], img_h=LIDAR_IMG[1])
     draw_boxes(lidar_path, preds, gt, LIDAR_LIMS, LIDAR_IMG[0], LIDAR_IMG[1])
 
-    cam_path = os.path.join(out_dir, f"{fid}_camera_original.png")
+    cam_path = os.path.join(out_dir, f"{fid}_camera_original.jpg")
     front0_clean = os.path.join(dump_dir, f"{stem}_front0_clean.png")
     front0_corrupt = os.path.join(dump_dir, f"{stem}_front0.png")
     shutil.copy2(front0_clean if os.path.exists(front0_clean) else front0_corrupt, cam_path)
@@ -151,8 +151,8 @@ def render_original_frame(fid: str, stem: str, dump_dir: str, out_dir: str,
             half = w // 2
             front1 = im.crop((half, 0, w, h)).resize((int(half * CAM_RESIZE), int(h * CAM_RESIZE)))
             front1 = front1.crop(CAM_CROP)
-            front1_path = os.path.join(out_dir, f"{fid}_camera_front1.png")
-            front1.save(front1_path)
+            front1_path = os.path.join(out_dir, f"{fid}_camera_front1.jpg")
+            front1.save(front1_path, quality=88)
             result["cam_front1"] = b64_file(front1_path)
 
     return result
@@ -169,7 +169,7 @@ def render_corrupted_frame(fid: str, stem: str, dump_dir: str, out_dir: str, con
     rdr_path = os.path.join(dump_dir, f"{stem}_rdr_sparse.npy")
     if os.path.exists(rdr_path):
         rdr, rdr_sfx = _subsample(np.load(rdr_path))
-        out_path = os.path.join(out_dir, f"{condition}_{fid}_radar.png")
+        out_path = os.path.join(out_dir, f"{condition}_{fid}_radar.jpg")
         render_bev(rdr[:, :2], rdr[:, 3], RADAR_LIMS, f"radar {condition} | {fid}{rdr_sfx}",
                    out_path, img_w=RADAR_IMG[0], img_h=RADAR_IMG[1])
         draw_boxes(out_path, preds, gt, RADAR_LIMS, RADAR_IMG[0], RADAR_IMG[1])
@@ -178,7 +178,7 @@ def render_corrupted_frame(fid: str, stem: str, dump_dir: str, out_dir: str, con
     ldr_path = os.path.join(dump_dir, f"{stem}_ldr64.npy")
     if os.path.exists(ldr_path):
         ldr, ldr_sfx = _subsample(np.load(ldr_path))
-        out_path = os.path.join(out_dir, f"{condition}_{fid}_lidar.png")
+        out_path = os.path.join(out_dir, f"{condition}_{fid}_lidar.jpg")
         render_bev(ldr[:, :2], ldr[:, 3], LIDAR_LIMS, f"lidar {condition} | {fid}{ldr_sfx}",
                    out_path, img_w=LIDAR_IMG[0], img_h=LIDAR_IMG[1])
         draw_boxes(out_path, preds, gt, LIDAR_LIMS, LIDAR_IMG[0], LIDAR_IMG[1])
@@ -186,7 +186,7 @@ def render_corrupted_frame(fid: str, stem: str, dump_dir: str, out_dir: str, con
 
     front0_path = os.path.join(dump_dir, f"{stem}_front0.png")
     if os.path.exists(front0_path):
-        out_path = os.path.join(out_dir, f"{condition}_{fid}_camera.png")
+        out_path = os.path.join(out_dir, f"{condition}_{fid}_camera.jpg")
         shutil.copy2(front0_path, out_path)
         draw_camera_boxes(out_path, preds, gt, r2i, aug, CAM_IMG[0], CAM_IMG[1])
         result["camera"] = b64_file(out_path)
@@ -349,11 +349,11 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
         parts.append(f'<div class="frame"><div class="frame-head">FRAME {fid} &middot; '
                      f'GT {o["gt_count"]} &middot; PRED {o["pred_count"]}</div>\n'
                      f'<div class="orig-grid">\n'
-                     f'<figure><img src="data:image/png;base64,{o["radar"]}"><figcaption>radar</figcaption></figure>\n'
-                     f'<figure><img src="data:image/png;base64,{o["lidar"]}"><figcaption>lidar</figcaption></figure>\n'
-                     f'<figure><img src="data:image/png;base64,{o["camera"]}"><figcaption>camera front0</figcaption></figure>\n')
+                     f'<figure><img src="data:image/jpeg;base64,{o["radar"]}"><figcaption>radar</figcaption></figure>\n'
+                     f'<figure><img src="data:image/jpeg;base64,{o["lidar"]}"><figcaption>lidar</figcaption></figure>\n'
+                     f'<figure><img src="data:image/jpeg;base64,{o["camera"]}"><figcaption>camera front0</figcaption></figure>\n')
         if "cam_front1" in o:
-            parts.append(f'<figure><img src="data:image/png;base64,{o["cam_front1"]}">'
+            parts.append(f'<figure><img src="data:image/jpeg;base64,{o["cam_front1"]}">'
                          f'<figcaption>camera front1 (unused by ASF)</figcaption></figure>\n')
         parts.append('</div></div>\n')
     parts.append('</div>\n')
@@ -381,9 +381,9 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
                     "ldr64" if modality == "lidar" else "front0", None)
                 corrupt_label = "corrupted" if changed else "original (identical input)"
                 parts.append(f'<div class="pair">\n'
-                             f'<figure><img src="data:image/png;base64,{o[modality]}">'
+                             f'<figure><img src="data:image/jpeg;base64,{o[modality]}">'
                              f'<figcaption>{label} original</figcaption></figure>\n'
-                             f'<figure><img src="data:image/png;base64,{cf[modality]}">'
+                             f'<figure><img src="data:image/jpeg;base64,{cf[modality]}">'
                              f'<figcaption>{label} {corrupt_label}</figcaption></figure>\n'
                              f'</div>\n')
             parts.append('</div>\n')
