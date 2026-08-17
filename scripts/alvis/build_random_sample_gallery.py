@@ -36,6 +36,7 @@ import pickle
 from kitti_boxes import parse_kitti_boxes  # noqa: E402
 from build_sequence_full_gallery import (  # noqa: E402
     find_kitti_dirs, find_sensor_dump, render_original_frame, render_corrupted_frame, parse_meta,
+    load_condition_params,
 )
 
 
@@ -195,6 +196,8 @@ body {{ background: var(--bg); color: var(--text); font-family: var(--sans); mar
 h1 {{ font-family: var(--mono); font-size: 22px; margin: 0 0 6px; }}
 h2 {{ font-family: var(--mono); font-size: 15px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin: 40px 0 16px; }}
 .dek {{ color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }}
+.params {{ font-family: var(--mono); font-size: 11px; color: var(--warn); }}
+td.params {{ font-size: 11px; }}
 .badge {{ display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 3px; margin-left: 8px; font-family: var(--mono); }}
 .badge-ok {{ background: rgba(45,157,111,0.18); color: var(--ok); }}
 .badge-abort {{ background: rgba(233,69,96,0.18); color: var(--accent); }}
@@ -218,12 +221,14 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
 <p class="dek">Random (sequence, frame) sample from the 10-sequence x 10-frame x 30-condition sweep (seed 42). ORIGINAL panels shared across all condition sections below.</p>
 <h2>Summary</h2>
 <table>
-<tr><th>Condition</th><th>Status</th><th>Frames rendered</th></tr>
+<tr><th>Condition</th><th>Parameters</th><th>Status</th><th>Frames rendered</th></tr>
 ''']
     for c in conditions_data:
         badge = "badge-ok" if c["status"] == "ok" else "badge-abort"
         label = "ran" if c["status"] == "ok" else "no predictions"
-        parts.append(f'<tr><td>{c["name"]}</td><td><span class="badge {badge}">{label}</span></td>'
+        params = load_condition_params(c["name"])
+        parts.append(f'<tr><td>{c["name"]}</td><td class="params">{params}</td>'
+                     f'<td><span class="badge {badge}">{label}</span></td>'
                      f'<td>{len(c["frames"])}/{len(sample)}</td></tr>\n')
     parts.append("</table>\n")
 
@@ -249,6 +254,7 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
         badge = ('<span class="badge badge-ok">ran</span>' if c["status"] == "ok"
                  else '<span class="badge badge-abort">no predictions</span>')
         parts.append(f'<h2>{c["name"]}{badge}</h2>\n')
+        parts.append(f'<p class="dek params">{load_condition_params(c["name"])}</p>\n')
         if not c["frames"]:
             parts.append('<p class="dek">No predictions for this condition in the sampled frames.</p>\n')
             continue

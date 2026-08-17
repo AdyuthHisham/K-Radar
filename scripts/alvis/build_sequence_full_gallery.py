@@ -35,9 +35,31 @@ import re
 import shutil
 import sys
 
+import yaml
+
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(_REPO, "datasets", "effects"))
 sys.path.insert(0, os.path.join(_REPO, "scripts", "alvis"))
+_NOISE_CONFIG_DIR = os.path.join(_REPO, "configs", "noise", "single")
+
+
+def load_condition_params(condition_name: str) -> str:
+    """Human-readable summary of a condition's noise-config parameters, e.g.
+    'camera / gaussian_noise: sigma=50.0' -- read directly from
+    configs/noise/single/<condition_name>.yml, the single source of truth
+    for severity values (see scripts/alvis/gen_single_effect_configs.py)."""
+    path = os.path.join(_NOISE_CONFIG_DIR, f"{condition_name}.yml")
+    if not os.path.exists(path):
+        return "(noise config not found)"
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+    parts = []
+    for modality in ("radar", "lidar", "camera"):
+        for entry in cfg.get(modality) or []:
+            params = entry.get("params") or {}
+            param_str = ", ".join(f"{k}={v}" for k, v in params.items()) or "(no params)"
+            parts.append(f"{modality} / {entry['name']}: {param_str}")
+    return "; ".join(parts) if parts else "(no active effect found in config)"
 
 import numpy as np
 import pickle
@@ -310,6 +332,8 @@ body {{ background: var(--bg); color: var(--text); font-family: var(--sans); mar
 h1 {{ font-family: var(--mono); font-size: 24px; margin: 0 0 6px; }}
 h2 {{ font-family: var(--mono); font-size: 15px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin: 40px 0 16px; }}
 .dek {{ color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }}
+.params {{ font-family: var(--mono); font-size: 11px; color: var(--warn); }}
+td.params {{ font-size: 11px; }}
 .badge {{ display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 3px; margin-left: 8px; font-family: var(--mono); }}
 .badge-ok {{ background: rgba(45,157,111,0.18); color: var(--ok); }}
 .badge-abort {{ background: rgba(233,69,96,0.18); color: var(--accent); }}
@@ -333,12 +357,14 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
 <p class="dek">{len(frame_ids)} inferenced frames &times; {len(conditions_data)} corrupted conditions (+ 1 original baseline). ORIGINAL panels are shared across all condition sections below (rendered once per frame, not per condition).</p>
 <h2>Summary</h2>
 <table>
-<tr><th>Condition</th><th>Status</th><th>Frames rendered</th></tr>
+<tr><th>Condition</th><th>Parameters</th><th>Status</th><th>Frames rendered</th></tr>
 ''']
     for c in conditions_data:
         badge = "badge-ok" if c["status"] == "ok" else "badge-abort"
         label = "ran" if c["status"] == "ok" else "no predictions"
-        parts.append(f'<tr><td>{c["name"]}</td><td><span class="badge {badge}">{label}</span></td>'
+        params = load_condition_params(c["name"])
+        parts.append(f'<tr><td>{c["name"]}</td><td class="params">{params}</td>'
+                     f'<td><span class="badge {badge}">{label}</span></td>'
                      f'<td>{len(c["frames"])}/{len(frame_ids)}</td></tr>\n')
     parts.append("</table>\n")
 
@@ -362,6 +388,7 @@ th {{ color: var(--text-dim); font-weight: 500; text-transform: uppercase; lette
         badge = ('<span class="badge badge-ok">ran</span>' if c["status"] == "ok"
                  else '<span class="badge badge-abort">no predictions</span>')
         parts.append(f'<h2>{c["name"]}{badge}</h2>\n')
+        parts.append(f'<p class="dek params">{load_condition_params(c["name"])}</p>\n')
         if not c["frames"]:
             parts.append('<p class="dek">No predictions for this condition '
                          '(model likely aborted on this input).</p>\n')
