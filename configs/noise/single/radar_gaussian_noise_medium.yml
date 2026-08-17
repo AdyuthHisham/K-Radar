@@ -1,6 +1,6 @@
-# Single-corruption run: radar / noise_induced_shifts (high)
+# Single-corruption run: radar / gaussian_noise (medium)
 #
-# each radar detection displaced by N(0, shift_std); shape preserved
+# new 2026-08-17: additive N(0, sigma) on radar xyz, isotropic, independent of point power/RCS/range -- distinct from noise_induced_shifts
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -8,10 +8,9 @@
 # edit that file rather than this one.
 seed: 42
 radar:
-  - name: noise_induced_shifts
+  - name: gaussian_noise
     p: 1.0
     params:
-      shift_std: 5.0
-      distribution: gaussian
+      sigma: 1.0
 lidar: []
 camera: []

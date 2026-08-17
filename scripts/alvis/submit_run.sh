@@ -4,9 +4,11 @@
 #
 # Generalized from submit_seq46.sh (which stays in place, untouched, as the
 # record of the sequence-46 pilot's 2-run scope). This version covers the
-# full sweep: 1 original baseline + 20 corrupted single-effect configs under
-# configs/noise/single/ (9 effects x 2 severities + 2 unconditional
-# loss_complete_zero variants -- see gen_single_effect_configs.py).
+# full sweep: 1 original baseline + 29 corrupted single-effect configs under
+# configs/noise/single/ (10 effects x 3 severities + 2 unconditional
+# loss_complete_zero variants -- see gen_single_effect_configs.py). Radar
+# noise_induced_shifts is DISABLED (excluded from the 10 severity-tiered
+# effects) -- see datasets/effects/noise_injection.py TODO.
 #
 # Run 'original' first and verify its predictions before running anything
 # else -- both a single named condition and 'sweep' refuse to submit without

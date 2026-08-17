@@ -1,6 +1,6 @@
 # Single-corruption run: lidar / gaussian_noise (high)
 #
-# additive N(0, sigma) on lidar xyz; shape preserved
+# additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape preserved
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -12,6 +12,5 @@ lidar:
   - name: gaussian_noise
     p: 1.0
     params:
-      sigma_xy: 1.0
-      sigma_z: 1.0
+      sigma: 0.12
 camera: []

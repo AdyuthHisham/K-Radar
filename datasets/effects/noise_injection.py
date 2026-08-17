@@ -10,10 +10,15 @@ Data-structure conventions (from K-Radar Fusion dataset):
     ldr64         : (N, M)   numpy — [x, y, z, intensity, ring, ...] (M >= 3)
     camera img    : (3, H, W) torch.Tensor — ToTensor() + Normalize(dset_mean, dset_std)
 
-TAXONOMY (Rev 2): 14 effects — 5 for radar/lidar, 4 for camera:
-  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete, loss_complete_zero
-  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete, loss_complete_zero
-  Camera:    frame_deletion, gaussian_noise,        loss_partial, loss_complete
+TAXONOMY (Rev 2): 15 effects defined — 6 for radar, 5 for lidar, 4 for camera.
+As of 2026-08-17, radar's noise_induced_shifts is DISABLED (defined but
+excluded from RADAR_EFFECTS/DEFAULT_ORDER_RADAR pending an SNR-dial
+reparameterization decision -- see TODO at its definition) and radar's
+gaussian_noise was added (isotropic, SNR-independent, distinct code path
+from noise_induced_shifts), so 14 effects are currently active/dispatchable:
+  Radar:     frame_deletion, [noise_induced_shifts -- DISABLED], gaussian_noise, loss_partial, loss_complete, loss_complete_zero
+  LiDAR:     frame_deletion, gaussian_noise (isotropic),         loss_partial, loss_complete, loss_complete_zero
+  Camera:    frame_deletion, gaussian_noise,                     loss_partial, loss_complete
 
 loss_complete vs loss_complete_zero (radar/lidar only): loss_complete sets the
 sensor key(s) to None, resolved later by NoiseInjectedDataset's blackout_policy
@@ -184,6 +189,58 @@ def radar_frame_deletion(dict_item: dict, params: dict, rng: np.random.Generator
     return dict_item
 
 
+# TODO(radar NIS reparameterization) — STATUS: DISABLED, excluded from
+# RADAR_EFFECTS / DEFAULT_ORDER_RADAR / gen_single_effect_configs.py's
+# SEVERITY_EFFECTS as of 2026-08-17. Function body below is left intact
+# (old flat-meter implementation) for reference only; it is not dispatched
+# by NoiseInjector and not part of the active sweep.
+#
+# CURRENT STATE (what's implemented below): flat isotropic displacement,
+# shift_std in metres (old severity values 0.01/1.0/5.0 m low/med/high),
+# identical for every point regardless of that point's range/RCS/power.
+#
+# WHAT WAS TO BE CHANGED (per finalized 14-paper literature audit):
+# reparameterize to an SNR dial N% (Low=30, Medium=60, High=100), applied as
+# SNR'_dB = SNR_dB - N/10, with per-point positional error scaling as
+# 1/sqrt(SNR') -- i.e. a function of that point's own SNR/RCS/range, not a
+# flat global sigma.
+#
+# LIMITATION (why this is blocked): rdr_sparse as loaded here carries only
+# [x, y, z, power] (see module docstring) -- no per-point SNR or RCS field.
+# `power` is CFAR-thresholded raw linear power; the local noise floor CFAR
+# computes at detection time (tools/cfar_utils/CFAR.py: ca_cfar(), the
+# `conv_out` array) is used only for thresholding and is discarded -- never
+# written to the saved sprdr_*.npy. True per-point SNR_dB is therefore not
+# reconstructable from data as currently stored on disk.
+#
+# OPTIONS CONSIDERED (none implemented yet):
+#   1. Power-proxy substitution: use `power` as a monotonic SNR/RCS stand-in,
+#      sigma_pos ~ 1/sqrt(power), N% dial scales power multiplicatively
+#      instead of subtracting dB. Zero loader changes, cheap, self-contained
+#      in this module. Must be documented as an approximation if implemented
+#      -- it is not literal SNR_dB and should not be presented as such.
+#   2. Recompute real per-point SNR from the dense radar cube at inference
+#      time (rerun a CFAR-style local noise-floor convolution per sample
+#      inside NoiseInjector). Requires flipping rdr.cube=True in the *shared*
+#      dataset config (datasets/kradar_detection_v2_0.py) used by both eval
+#      and training, and implementing a currently-stubbed cube-loading branch
+#      (kradar_detection_v2_0.py:364). Rejected: violates the no-training-
+#      pipeline-changes constraint even if flag-scoped to eval, and adds a
+#      full dense-cube read + 3D convolution per sample/epoch to a hot path
+#      that today only touches the small point array.
+#   3. Persist the real noise floor once, offline: add a 5th column
+#      (noise_floor) to sprdr_*.npy at CFAR-generation time
+#      (tools/cfar_utils/CFAR.py: ca_cfar()), then re-run that offline
+#      preprocessing pass once over the dataset. No live loader *code*
+#      change, but rewrites the data files the training loader also reads
+#      (kradar_detection_v2_0.py:357-366) -- NOT YET VERIFIED whether that
+#      loader hard-asserts a 4-column point shape, which would need
+#      confirming before this is safe. Also a materially larger unit of work
+#      (full dataset re-preprocessing) than option 1.
+#
+# DECISION: left DISABLED pending a decision among the above. Do not
+# re-enable (re-add to RADAR_EFFECTS / DEFAULT_ORDER_RADAR / the generator's
+# SEVERITY_EFFECTS) without resolving this first.
 def radar_noise_induced_shifts(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
     """R2 — Shift radar detection positions by a noise process.
 
@@ -235,6 +292,38 @@ def radar_noise_induced_shifts(dict_item: dict, params: dict, rng: np.random.Gen
             arr[:, 0] += dx
             arr[:, 1] += dy
             arr[:, 2] += dz
+
+    return dict_item
+
+
+def radar_gaussian_noise(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
+    """R2b — Isotropic additive Gaussian noise on radar detection positions.
+
+    Added 2026-08-17 per the literature audit. Deliberately distinct from
+    ``radar_noise_induced_shifts`` (currently DISABLED, see the TODO at its
+    definition above): this effect applies a flat p' = p + N(0, sigma^2 I)
+    perturbation to (x, y, z), identical for every point regardless of that
+    point's power/RCS/range — it does not touch or read the ``power``
+    column. NIS was intended to be a per-point, SNR-dependent effect; this
+    one is intentionally SNR-independent, which is the whole reason it is
+    a separate effect rather than a variant of NIS.
+
+    Parameters
+    ----------
+    sigma : float, optional
+        Std dev of positional noise in metres, applied independently to
+        x, y, and z (default 0.1).
+    """
+    sigma = params.get("sigma", 0.1)
+
+    for key in ["rdr_sparse"]:
+        if _has_key(dict_item, key) and dict_item[key].shape[1] >= 3:
+            arr = dict_item[key]
+            n = len(arr)
+            noise_xyz = rng.normal(0.0, sigma, size=(n, 3))
+            arr[:, 0] += noise_xyz[:, 0]
+            arr[:, 1] += noise_xyz[:, 1]
+            arr[:, 2] += noise_xyz[:, 2]
 
     return dict_item
 
@@ -318,33 +407,36 @@ def lidar_frame_deletion(dict_item: dict, params: dict, rng: np.random.Generator
 
 
 def lidar_gaussian_noise(dict_item: dict, params: dict, rng: np.random.Generator) -> dict:
-    """L2 — Additive Gaussian noise to LiDAR positions and intensity.
+    """L2 — Isotropic additive Gaussian noise to LiDAR positions and intensity.
 
-    Adds independent N(0, sigma) noise to (x, y, z) coordinates and
-    optionally to the intensity channel (column 3 in ``ldr64``).
+    Adds independent N(0, sigma^2) noise to each of (x, y, z) with a single
+    shared sigma, and optionally to the intensity channel (column 3 in
+    ``ldr64``).
+
+    As of 2026-08-17 (literature audit): the previous sigma_xy/sigma_z
+    anisotropic split is dropped in favour of one isotropic sigma applied
+    to all three coordinates — the audited severity table specifies a
+    single sigma per tier, not a per-axis split.
 
     Parameters
     ----------
-    sigma_xy : float, optional
-        Std dev of noise in x and y (metres, default 0.1).
-    sigma_z : float, optional
-        Std dev of noise in z (metres), defaults to sigma_xy.
+    sigma : float, optional
+        Std dev of positional noise in metres, applied independently to
+        x, y, and z (default 0.1).
     sigma_intensity : float, optional
         Std dev of noise on intensity channel (default 0.0 — no noise).
     """
-    sigma_xy = params.get("sigma_xy", 0.1)
-    sigma_z = params.get("sigma_z", sigma_xy)
+    sigma = params.get("sigma", 0.1)
     sigma_intensity = params.get("sigma_intensity", 0.0)
 
     if _has_key(dict_item, "ldr64"):
         pc = dict_item["ldr64"]
         n = len(pc)
-        # Position noise
-        noise_xy = rng.normal(0.0, sigma_xy, size=(n, 2))
-        noise_z = rng.normal(0.0, sigma_z, size=n)
-        pc[:, 0] += noise_xy[:, 0]
-        pc[:, 1] += noise_xy[:, 1]
-        pc[:, 2] += noise_z
+        # Position noise — isotropic across x, y, z
+        noise_xyz = rng.normal(0.0, sigma, size=(n, 3))
+        pc[:, 0] += noise_xyz[:, 0]
+        pc[:, 1] += noise_xyz[:, 1]
+        pc[:, 2] += noise_xyz[:, 2]
         # Optional intensity noise (column 3)
         if sigma_intensity > 0.0 and pc.shape[1] >= 4:
             noise_intensity = rng.normal(0.0, sigma_intensity, size=n)
@@ -544,7 +636,9 @@ def camera_loss_complete(dict_item: dict, params: dict, rng: np.random.Generator
 
 RADAR_EFFECTS: dict[str, Callable] = {
     "frame_deletion":       radar_frame_deletion,
-    "noise_induced_shifts": radar_noise_induced_shifts,
+    # "noise_induced_shifts" intentionally excluded -- see TODO above
+    # radar_noise_induced_shifts()'s definition for status/options/limitation.
+    "gaussian_noise":       radar_gaussian_noise,
     "loss_partial":         radar_loss_partial,
     "loss_complete":        radar_loss_complete,
     "loss_complete_zero":   radar_loss_complete_zero,
@@ -576,7 +670,9 @@ ALL_EFFECTS: dict[str, dict[str, Callable]] = {
 # Loss complete should go last (it unconditionally blacks out; anything after is wasted).
 DEFAULT_ORDER_RADAR = [
     "frame_deletion",       # R1 — first, so other effects skip if frame gone
-    "noise_induced_shifts", # R2
+    # "noise_induced_shifts" (R2) intentionally excluded -- see TODO above
+    # radar_noise_induced_shifts()'s definition.
+    "gaussian_noise",       # R2b — new 2026-08-17, isotropic, SNR-independent
     "loss_partial",         # R3
     "loss_complete",        # R4 — unconditional None-blackout
     "loss_complete_zero",   # R5 — unconditional all-zero-array blackout

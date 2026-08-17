@@ -1,10 +1,11 @@
 """
 Standalone unit tests for the noise-injection module (Rev 2 taxonomy).
 
-Tests all 14 effects:
-  Radar:     frame_deletion, noise_induced_shifts, loss_partial, loss_complete, loss_complete_zero
-  LiDAR:     frame_deletion, gaussian_noise,        loss_partial, loss_complete, loss_complete_zero
-  Camera:    frame_deletion, gaussian_noise,        loss_partial, loss_complete
+Tests 14 active effects (15 defined -- radar noise_induced_shifts is DISABLED,
+see datasets/effects/noise_injection.py TODO):
+  Radar:     frame_deletion, gaussian_noise, loss_partial, loss_complete, loss_complete_zero
+  LiDAR:     frame_deletion, gaussian_noise, loss_partial, loss_complete, loss_complete_zero
+  Camera:    frame_deletion, gaussian_noise, loss_partial, loss_complete
 
 Plus injector integration tests and legacy-import compatibility check.
 Runs on synthetic dummy data — no K-Radar pipeline dependency.
@@ -38,7 +39,8 @@ NoiseInjector = _noise_mod.NoiseInjector
 
 # New taxonomy (Rev 2) imports
 radar_frame_deletion       = _noise_mod.radar_frame_deletion
-radar_noise_induced_shifts = _noise_mod.radar_noise_induced_shifts
+radar_noise_induced_shifts = _noise_mod.radar_noise_induced_shifts  # DISABLED, not in RADAR_EFFECTS -- tested directly below
+radar_gaussian_noise       = _noise_mod.radar_gaussian_noise
 radar_loss_partial         = _noise_mod.radar_loss_partial
 radar_loss_complete        = _noise_mod.radar_loss_complete
 radar_loss_complete_zero   = _noise_mod.radar_loss_complete_zero
@@ -307,6 +309,28 @@ def test_radar_noise_induced_shifts():
            f"max_disp={max_disp:.3f}")
 
 
+def test_radar_gaussian_noise():
+    """R2b: isotropic Gaussian noise changes point positions but not power,
+    independent of each point's power/RCS -- distinct from noise_induced_shifts."""
+    rng = np.random.default_rng(211)
+
+    d = _make_dict_item(with_rdr_polar=False, with_pc100p=False)
+    old_xyz = d["rdr_sparse"][:, :3].copy()
+    old_pw = d["rdr_sparse"][:, 3].copy()
+
+    d = radar_gaussian_noise(d, {"sigma": 0.5}, rng)
+    delta = d["rdr_sparse"][:, :3] - old_xyz
+
+    std_disp = np.std(delta)
+    _check("R2b noise: disp std within 30% of sigma (isotropic)",
+           abs(std_disp - 0.5) < 0.15,
+           f"std_disp={std_disp:.4f}")
+
+    _check("R2b noise: power values unchanged (SNR-independent)",
+           np.allclose(d["rdr_sparse"][:, 3], old_pw, atol=1e-6),
+           f"max_power_diff={np.max(np.abs(d['rdr_sparse'][:,3] - old_pw)):.2e}")
+
+
 def test_radar_loss_partial():
     """R3: partial loss zeroes out a fraction of rows (shape preserved)."""
     rng = np.random.default_rng(204)
@@ -458,7 +482,7 @@ def test_lidar_frame_deletion():
 
 
 def test_lidar_gaussian_noise():
-    """L2: Gaussian noise on LiDAR positions (and optionally intensity)."""
+    """L2: Isotropic Gaussian noise on LiDAR positions (and optionally intensity)."""
     rng = np.random.default_rng(208)
 
     d = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
@@ -466,17 +490,13 @@ def test_lidar_gaussian_noise():
     old_pc = d["ldr64"][:, :3].copy()
     old_intensity = d["ldr64"][:, 3].copy()
 
-    d = lidar_gaussian_noise(d, {"sigma_xy": 0.2, "sigma_z": 0.1, "sigma_intensity": 5.0}, rng)
+    d = lidar_gaussian_noise(d, {"sigma": 0.2, "sigma_intensity": 5.0}, rng)
     delta = d["ldr64"][:, :3] - old_pc
 
-    std_xy = np.std(delta[:, :2])
-    std_z = np.std(delta[:, 2])
-    _check("L2 noise xy: std within 30% of sigma_xy",
-           abs(std_xy - 0.2) < 0.06,
-           f"std_xy={std_xy:.4f}")
-    _check("L2 noise z: std within 30% of sigma_z",
-           abs(std_z - 0.1) < 0.03,
-           f"std_z={std_z:.4f}")
+    std_xyz = np.std(delta)
+    _check("L2 noise xyz: std within 30% of sigma (isotropic)",
+           abs(std_xyz - 0.2) < 0.06,
+           f"std_xyz={std_xyz:.4f}")
 
     # Intensity should have changed (sigma_intensity > 0)
     intensity_delta = d["ldr64"][:, 3] - old_intensity
@@ -488,7 +508,7 @@ def test_lidar_gaussian_noise():
     d2 = _make_dict_item(with_rdr_sparse=False, with_rdr_polar=False, with_pc100p=False,
                           with_camera=False)
     old_i2 = d2["ldr64"][:, 3].copy()
-    d2 = lidar_gaussian_noise(d2, {"sigma_xy": 0.1, "sigma_intensity": 0.0}, rng)
+    d2 = lidar_gaussian_noise(d2, {"sigma": 0.1, "sigma_intensity": 0.0}, rng)
     _check("L2 noise: sigma_intensity=0 -> intensity unchanged",
            np.allclose(d2["ldr64"][:, 3], old_i2, atol=1e-6))
 
@@ -749,8 +769,11 @@ def test_camera_loss_partial_cross_channel_independence():
 
 
 def test_registry_counts():
-    """Radar/lidar registries have 5 effects (incl. loss_complete_zero); camera has 4."""
-    _check("REG: radar has 5 effects",
+    """Radar has 5 active effects (frame_deletion, gaussian_noise,
+    loss_partial, loss_complete, loss_complete_zero -- noise_induced_shifts
+    disabled, see datasets/effects/noise_injection.py TODO); lidar has 5
+    (incl. loss_complete_zero); camera has 4."""
+    _check("REG: radar has 5 effects (noise_induced_shifts disabled, gaussian_noise added)",
            len(RADAR_EFFECTS) == 5,
            f"got {len(RADAR_EFFECTS)}: {list(RADAR_EFFECTS.keys())}")
     _check("REG: lidar has 5 effects",
@@ -762,8 +785,12 @@ def test_registry_counts():
 
 
 def test_registry_effect_names():
-    """Registries contain exactly the expected effect names."""
-    expected_radar = {"frame_deletion", "noise_induced_shifts", "loss_partial",
+    """Registries contain exactly the expected effect names.
+
+    noise_induced_shifts is intentionally excluded from RADAR_EFFECTS -- see
+    the TODO at radar_noise_induced_shifts()'s definition in noise_injection.py.
+    """
+    expected_radar = {"frame_deletion", "gaussian_noise", "loss_partial",
                        "loss_complete", "loss_complete_zero"}
     expected_lidar = {"frame_deletion", "gaussian_noise", "loss_partial",
                        "loss_complete", "loss_complete_zero"}
@@ -837,7 +864,7 @@ def test_injector_basic():
     """Injector runs end-to-end with one new-taxonomy effect per modality."""
     config = EffectConfig(
         seed=42,
-        radar=[Effect("noise_induced_shifts", p=1.0, params={"shift_std": 0.5})],
+        radar=[Effect("loss_partial", p=1.0, params={"fraction": 0.2})],
         lidar=[Effect("loss_partial", p=1.0, params={"fraction": 0.2})],
         camera=[Effect("gaussian_noise", p=1.0, params={"sigma": 5})],
     )
@@ -1020,7 +1047,7 @@ def test_injector_prob_zero():
     """p=0.0 -> no effects applied."""
     config = EffectConfig(
         seed=42,
-        radar=[Effect("noise_induced_shifts", p=0.0, params={"shift_std": 0.5})],
+        radar=[Effect("loss_partial", p=0.0, params={"fraction": 0.2})],
         lidar=[Effect("loss_partial", p=0.0, params={"fraction": 0.2})],
     )
     injector = NoiseInjector(config)
@@ -1089,7 +1116,7 @@ def test_injector_seed_determinism():
 def test_injector_no_corruption_on_empty_keys():
     """Injector handles missing sensor keys gracefully."""
     config = EffectConfig(
-        radar=[Effect("noise_induced_shifts", p=1.0, params={"shift_std": 0.5})],
+        radar=[Effect("loss_partial", p=1.0, params={"fraction": 0.5})],
         lidar=[Effect("loss_partial", p=1.0, params={"fraction": 0.2})],
     )
     injector = NoiseInjector(config)
@@ -1247,13 +1274,13 @@ def test_injector_has_key_skips_none():
         radar=[
             Effect("frame_deletion", p=1.0,
                    params={"mode": "deterministic", "interval": 1}),
-            Effect("noise_induced_shifts", p=1.0, params={"shift_std": 1.0}),
+            Effect("loss_partial", p=1.0, params={"fraction": 0.5}),
         ],
     )
     injector = NoiseInjector(config)
     d = _make_dict_item(rdr_frame_idx=0)
     d = injector(d, frame_index=0)
-    # Frame deletion fired -> rdr_sparse is None -> noise_induced_shifts should
+    # Frame deletion fired -> rdr_sparse is None -> loss_partial should
     # not crash (it will skip via _has_key)
     _check("INJ has_key skip: rdr_sparse is None (not crash)",
            d["rdr_sparse"] is None)
@@ -1271,6 +1298,7 @@ if __name__ == "__main__":
     test_radar_frame_deletion_deterministic_index_list()
     test_radar_frame_deletion_random()
     test_radar_noise_induced_shifts()
+    test_radar_gaussian_noise()
     test_radar_loss_partial()
     test_radar_loss_complete()
     test_radar_loss_partial_vs_complete_distinction()

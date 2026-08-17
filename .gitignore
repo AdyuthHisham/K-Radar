@@ -2,6 +2,8 @@
 datasets/__pycache__/
 
 # Local datasets and generated data
+outputs/
+output/
 data/
 preprocessed/
 pretrained/
@@ -11,3 +13,4 @@ revise_label/
 .claude/worktrees/
 
 *.png
+*.html

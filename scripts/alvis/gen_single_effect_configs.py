@@ -6,12 +6,21 @@ The robustness sweep runs each corruption in isolation at three severity
 levels -- one effect, one modality, one severity, everything else original --
 so any change in detections is attributable to that single corruption at that
 intensity. Emits:
-  - 27 low/medium/high triples (9 effects x 3 severities): radar
-    frame_deletion, noise_induced_shifts, loss_partial; lidar frame_deletion,
+  - 30 low/medium/high triples (10 effects x 3 severities): radar
+    frame_deletion, gaussian_noise, loss_partial; lidar frame_deletion,
     gaussian_noise, loss_partial; camera frame_deletion, gaussian_noise,
-    loss_partial.
+    loss_partial. (radar noise_induced_shifts intentionally excluded --
+    DISABLED, see datasets/effects/noise_injection.py TODO.)
   - 2 unconditional configs (no severity split, no params): radar and lidar
     loss_complete_zero -- distinct from `loss_complete` (see below).
+
+2026-08-17 literature-audit update: radar gaussian_noise added (new effect,
+isotropic, SNR-independent -- distinct from noise_induced_shifts); lidar
+gaussian_noise collapsed from a sigma_xy/sigma_z anisotropic split to one
+isotropic sigma; camera gaussian_noise sigma raised to 20/50/80 (was
+1.0/40.0/50.0); loss_partial's high tier lowered to 0.7 (was 0.8) across
+all three modalities. frame_deletion and radar/lidar loss_complete/
+loss_complete_zero are unchanged by this update.
 
 `loss_complete` (the None-setting variant) is deliberately NOT emitted, same
 as before. Per docs/vAIlt/04_Design/Noise_Taxonomy.md:19 and this generator's
@@ -55,13 +64,17 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
           "high": {"mode": "random", "p": 0.9}},
          "radar frame randomly deleted with probability p; sets rdr_sparse to None -> blackout policy applies"),
-        ("noise_induced_shifts",
-         {"low": {"shift_std": 0.01, "distribution": "gaussian"},
-          "medium": {"shift_std": 1.0, "distribution": "gaussian"},
-          "high": {"shift_std": 5.0, "distribution": "gaussian"}},
-         "each radar detection displaced by N(0, shift_std); shape preserved"),
+        # "noise_induced_shifts" intentionally excluded as of 2026-08-17 --
+        # DISABLED in datasets/effects/noise_injection.py pending an SNR-dial
+        # reparameterization decision (see TODO at radar_noise_induced_shifts()'s
+        # definition there for current state / options / limitation). Do not
+        # re-add this tuple without resolving that first.
+        ("gaussian_noise",
+         {"low": {"sigma": 0.1}, "medium": {"sigma": 1.0}, "high": {"sigma": 2.0}},
+         "new 2026-08-17: additive N(0, sigma) on radar xyz, isotropic, "
+         "independent of point power/RCS/range -- distinct from noise_induced_shifts"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.7}},
          "fraction of radar detections zeroed in place; row count preserved"),
     ],
     "lidar": [
@@ -70,11 +83,10 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
           "high": {"mode": "random", "p": 0.9}},
          "lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies"),
         ("gaussian_noise",
-         {"low": {"sigma_xy": 0.01, "sigma_z": 0.01}, "medium": {"sigma_xy": 0.5, "sigma_z": 0.2},
-          "high": {"sigma_xy": 1.0, "sigma_z": 1.0}},
-         "additive N(0, sigma) on lidar xyz; shape preserved"),
+         {"low": {"sigma": 0.04}, "medium": {"sigma": 0.08}, "high": {"sigma": 0.12}},
+         "additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape preserved"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.7}},
          "fraction of lidar points zeroed in place; row count preserved"),
     ],
     "camera": [
@@ -83,10 +95,10 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
           "high": {"mode": "random", "p": 0.9}},
          "camera frame randomly deleted with probability p; writes a black-image tensor, never None"),
         ("gaussian_noise",
-         {"low": {"sigma": 1.0}, "medium": {"sigma": 40.0}, "high": {"sigma": 50.0}},
+         {"low": {"sigma": 20.0}, "medium": {"sigma": 50.0}, "high": {"sigma": 80.0}},
          "additive N(0, sigma) in 0-255 image units"),
         ("loss_partial",
-         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.8}},
+         {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.7}},
          "fraction of the image (contiguous rectangle) blacked out"),
     ],
 }
