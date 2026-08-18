@@ -85,11 +85,16 @@ BINDS="${BINDS#,}"
 
 NOISE_ARGS=""
 if [ -n "$NOISE_CFG" ]; then
-  # Sensor dumps land next to the predictions so each condition keeps its own
-  # corrupted images/point clouds (with original copies) for visual inspection.
+  # Sensor dumps land next to the predictions. --dump-meta-only: at full-sequence
+  # x 58-sequence x 29-condition scale, writing every frame's actual sensor
+  # arrays (.npy/.png) would be a real disk-space risk -- only the per-frame
+  # meta.txt (changed=True/False per modality, frame/seq/sensor indices) is
+  # kept. Drop this flag for a small ad hoc run where you want the full
+  # arrays for a gallery (e.g. the earlier 10-sequence test, or build_seq_gallery.py).
   NOISE_ARGS="--noise-config /opt/K-Radar/configs/noise/$NOISE_CFG"
   NOISE_ARGS="$NOISE_ARGS --blackout-policy $BLACKOUT_POLICY"
   NOISE_ARGS="$NOISE_ARGS --dump-sensors /opt/K-Radar/logs/sensor_dump"
+  NOISE_ARGS="$NOISE_ARGS --dump-meta-only"
 fi
 
 echo "=== sequence: $SEQ  condition: $OUT_NAME  noise-config: ${NOISE_CFG:-<none, original run>}  blackout-policy: $BLACKOUT_POLICY ==="

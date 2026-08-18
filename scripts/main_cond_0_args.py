@@ -51,6 +51,13 @@ if __name__ == '__main__':
                              '(point clouds as .npy, camera images as .png, plus a _meta.txt), '
                              'with clean copies alongside for comparison. Only used with '
                              '--noise-config.')
+    parser.add_argument('--dump-meta-only', action='store_true',
+                        help='With --dump-sensors, write only <stem>_meta.txt per frame '
+                             '(frame index, seq, blackout list, sensor indices, and a '
+                             'changed=True/False flag per modality) and skip the actual '
+                             '.npy/.png sensor arrays. For large sweeps where full sensor '
+                             'dumps would be a real disk-space risk but the changed-flag '
+                             'bookkeeping is still wanted.')
 
     args = parser.parse_args()
 
@@ -73,9 +80,11 @@ if __name__ == '__main__':
             pline.dataset_test, injector,
             blackout_policy=args.blackout_policy,
             dump_dir=args.dump_sensors,
+            dump_arrays=not args.dump_meta_only,
         )
         if args.dump_sensors:
-            print(f'[noise-injection] Dumping per-frame sensor data to {args.dump_sensors}')
+            mode = 'meta only (no .npy/.png arrays)' if args.dump_meta_only else 'full arrays + meta'
+            print(f'[noise-injection] Dumping per-frame sensor data to {args.dump_sensors} ({mode})')
         if args.blackout_policy == 'zero_feature':
             n_hooks = install_blackout_hooks(pline.network)
             print(f'[noise-injection] Installed {n_hooks} blackout forward hooks')

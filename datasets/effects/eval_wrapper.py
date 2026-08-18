@@ -146,6 +146,7 @@ class NoiseInjectedDataset:
         injector,
         blackout_policy: str = "empty",
         dump_dir: str | None = None,
+        dump_arrays: bool = True,
     ) -> None:
         if blackout_policy not in BLACKOUT_POLICIES:
             raise ValueError(
@@ -155,6 +156,15 @@ class NoiseInjectedDataset:
         self._injector = injector
         self._policy = blackout_policy
         self._dump_dir = dump_dir
+        # When False, _dump() still writes <stem>_meta.txt (frame index, seq,
+        # blackout list, sensor indices, and the changed=True/False flag per
+        # modality) but skips writing the actual point-cloud .npy / image .png
+        # files. Added for the full 58-sequence sweep: dumping full sensor
+        # arrays for every frame of every corrupted run is a real disk-space
+        # risk at that scale, but the changed-flag bookkeeping (what a gallery
+        # or later analysis needs to know WHICH modality was actually altered
+        # a given frame) is cheap and worth keeping unconditionally.
+        self._dump_arrays = dump_arrays
         if dump_dir is not None:
             os.makedirs(dump_dir, exist_ok=True)
         # Last clean value seen per key, for last_frame_hold.
@@ -241,21 +251,29 @@ class NoiseInjectedDataset:
         The ``*_clean`` copies come from pre-injection deep copies taken in
         __getitem__ — in-place effects would otherwise make them identical to
         the corrupted arrays.
+
+        When ``self._dump_arrays`` is False, the array/image files below are
+        skipped entirely (no .npy / .png written) — only ``<stem>_meta.txt``
+        (below) is written, which still carries the changed=True/False flag
+        per modality (computed from ``item``/``dump_clean`` already in memory,
+        so it costs nothing extra to keep even when the arrays themselves
+        aren't persisted).
         """
         seq = str(item.get("meta", {}).get("seq", "?"))
         stem = os.path.join(self._dump_dir, f"{idx:06d}_seq{seq}")
 
-        for key in ("rdr_sparse", "ldr64"):
-            if isinstance(item.get(key), np.ndarray):
-                np.save(f"{stem}_{key}.npy", item[key])
-            if isinstance(dump_clean.get(key), np.ndarray):
-                np.save(f"{stem}_{key}_clean.npy", dump_clean[key])
+        if self._dump_arrays:
+            for key in ("rdr_sparse", "ldr64"):
+                if isinstance(item.get(key), np.ndarray):
+                    np.save(f"{stem}_{key}.npy", item[key])
+                if isinstance(dump_clean.get(key), np.ndarray):
+                    np.save(f"{stem}_{key}_clean.npy", dump_clean[key])
 
-        for cam_key in cam_keys:
-            if isinstance(item.get(cam_key), torch.Tensor):
-                _save_png(f"{stem}_{cam_key}.png", item[cam_key])
-            if isinstance(dump_clean.get(cam_key), torch.Tensor):
-                _save_png(f"{stem}_{cam_key}_clean.png", dump_clean[cam_key])
+            for cam_key in cam_keys:
+                if isinstance(item.get(cam_key), torch.Tensor):
+                    _save_png(f"{stem}_{cam_key}.png", item[cam_key])
+                if isinstance(dump_clean.get(cam_key), torch.Tensor):
+                    _save_png(f"{stem}_{cam_key}_clean.png", dump_clean[cam_key])
 
         with open(f"{stem}_meta.txt", "w") as f:
             f.write(f"frame_index: {idx}\n")
