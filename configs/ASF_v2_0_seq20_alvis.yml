@@ -1,4 +1,4 @@
-# Sequence-16 original-vs-corrupted run on Alvis: full sequence
+# Sequence-20 original-vs-corrupted run on Alvis: full sequence
 # (all frames surviving class/ROI/remove_0_obj filtering), no frame
 # subsetting. Part of the full 58-sequence sweep. Identical to
 # ASF_v2_0_seq46_alvis.yml except for the portion block.
@@ -140,8 +140,8 @@ DATASET:
     'Label':            [False, -1, [0.5, 0.5, 0.5], [128,128,128]],
   }
   collate_fn: 'v2_1'
-  # Scope: sequence 16, all frames (no max_per_seq/frame_select cap).
-  portion: ['16']
+  # Scope: sequence 20, all frames (no max_per_seq/frame_select cap).
+  portion: ['20']
 ### ----- Dataset ----- ###
 
 ### ----- Model ----- ###

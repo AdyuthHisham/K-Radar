@@ -1,7 +1,7 @@
-# Sequence-46 clean-vs-noisy run on Alvis: full sequence 46 (598 frames,
-# all of data/46/info_label_rev2), no frame subsetting. Derived from
-# ASF_v2_0_smoke_alvis.yml with the portion/max_per_seq/frame_select block
-# replaced by portion: ['46'] and no per-sequence frame cap.
+# Sequence-46 original-vs-corrupted run on Alvis: full sequence
+# (all frames surviving class/ROI/remove_0_obj filtering), no frame
+# subsetting. Part of the full 58-sequence sweep. Identical to
+# ASF_v2_0_seq46_alvis.yml except for the portion block.
 ### ----- General ----- ###
 GENERAL:
   NAME: 'A2FUSION_rlc_l1d256_l2p2t32d256g_l2g_scl_mha16'
@@ -140,7 +140,7 @@ DATASET:
     'Label':            [False, -1, [0.5, 0.5, 0.5], [128,128,128]],
   }
   collate_fn: 'v2_1'
-  # Scope: sequence 46 only, all frames (no max_per_seq/frame_select cap).
+  # Scope: sequence 46, all frames (no max_per_seq/frame_select cap).
   portion: ['46']
 ### ----- Dataset ----- ###
 
