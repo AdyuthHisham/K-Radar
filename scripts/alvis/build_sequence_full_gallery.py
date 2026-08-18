@@ -61,6 +61,19 @@ def load_condition_params(condition_name: str) -> str:
             parts.append(f"{modality} / {entry['name']}: {param_str}")
     return "; ".join(parts) if parts else "(no active effect found in config)"
 
+
+def current_condition_names() -> set[str]:
+    """Basenames of configs/noise/single/*.yml, i.e. the set of conditions
+    the CURRENT noise-injection code actually supports. Run output
+    directories can outlive a config change (e.g. an effect later disabled
+    or renamed, like radar_noise_induced_shifts -> radar_gaussian_noise) --
+    filter gallery condition lists against this rather than just listing
+    whatever directories happen to exist on disk, so stale results from a
+    superseded effect don't silently appear in a gallery built against
+    current code."""
+    return {os.path.splitext(f)[0] for f in os.listdir(_NOISE_CONFIG_DIR) if f.endswith(".yml")}
+
+
 import numpy as np
 import pickle
 from visualize_effects_v2 import render_bev  # noqa: E402
@@ -248,10 +261,19 @@ def main() -> None:
     if not frame_ids:
         raise SystemExit(f"No frames found in {original_preds_dir}")
 
+    valid_conditions = current_condition_names()
+    stale = [
+        d for d in os.listdir(args.run_root)
+        if os.path.isdir(os.path.join(args.run_root, d)) and d != "original"
+        and not d.startswith("_") and d not in valid_conditions
+    ]
+    if stale:
+        print(f"Excluding {len(stale)} stale condition dir(s) not in current "
+              f"configs/noise/single/*.yml: {sorted(stale)}")
     condition_dirs = sorted(
         d for d in os.listdir(args.run_root)
         if os.path.isdir(os.path.join(args.run_root, d)) and d != "original"
-        and not d.startswith("_")
+        and not d.startswith("_") and d in valid_conditions
     )
 
     out_dir = os.path.dirname(os.path.abspath(args.out))

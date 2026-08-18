@@ -36,7 +36,7 @@ import pickle
 from kitti_boxes import parse_kitti_boxes  # noqa: E402
 from build_sequence_full_gallery import (  # noqa: E402
     find_kitti_dirs, find_sensor_dump, render_original_frame, render_corrupted_frame, parse_meta,
-    load_condition_params,
+    load_condition_params, current_condition_names,
 )
 
 
@@ -88,9 +88,19 @@ def main() -> None:
             raise SystemExit(f"No original-run KITTI results for sequence {seq} under {original_dir}")
         original_preds_dir, gts_dir = original_kitti
 
+        valid_conditions = current_condition_names()
+        stale = [
+            d for d in os.listdir(run_root)
+            if os.path.isdir(os.path.join(run_root, d)) and d != "original"
+            and not d.startswith("_") and d not in valid_conditions
+        ]
+        if stale:
+            print(f"seq{seq}: excluding {len(stale)} stale condition dir(s) not in current "
+                  f"configs/noise/single/*.yml: {sorted(stale)}")
         condition_dirs = sorted(
             d for d in os.listdir(run_root)
-            if os.path.isdir(os.path.join(run_root, d)) and d != "original" and not d.startswith("_")
+            if os.path.isdir(os.path.join(run_root, d)) and d != "original"
+            and not d.startswith("_") and d in valid_conditions
         )
         # Candidate source dumps for this sequence's shared ORIGINAL-panel
         # backups (the `original` run has no --dump-sensors dump of its own).
