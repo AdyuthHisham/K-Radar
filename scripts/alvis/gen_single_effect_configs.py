@@ -22,6 +22,18 @@ isotropic sigma; camera gaussian_noise sigma raised to 20/50/80 (was
 all three modalities. frame_deletion and radar/lidar loss_complete/
 loss_complete_zero are unchanged by this update.
 
+2026-08-18: lidar gaussian_noise's severities changed to match radar's
+(0.1/1.0/2.0, was 0.04/0.08/0.12 -- CommonCorruption's gaussian_rad levels
+1/3/5) per user decision. Per docs/lit_survey/noise_addition/parameter_audit.md,
+the CommonCorruption values were themselves an unanchored evenly-spaced ladder
+(no physical/sensor-spec derivation given in that paper) calibrated for
+KITTI/Velodyne, not K-Radar's Ouster os2-64/os1-128 LiDARs, and applied noise
+to spherical-radial r rather than isotropic Cartesian xyz as implemented
+here -- matching lidar to radar's range trades one unanchored ladder for a
+different one (radar's own 0.1/1.0/2.0 is only paper-anchored at its two
+endpoints, per Kumar et al. 2025), not a strictly better-justified choice,
+just a consistent one across both point-cloud modalities.
+
 `loss_complete` (the None-setting variant) is deliberately NOT emitted, same
 as before. Per docs/vAIlt/04_Design/Noise_Taxonomy.md:19 and this generator's
 prior empirical finding (2026-08-11 sweep), it is redundant with
@@ -83,8 +95,14 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
           "high": {"mode": "random", "p": 0.9}},
          "lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies"),
         ("gaussian_noise",
-         {"low": {"sigma": 0.04}, "medium": {"sigma": 0.08}, "high": {"sigma": 0.12}},
-         "additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape preserved"),
+         {"low": {"sigma": 0.1}, "medium": {"sigma": 1.0}, "high": {"sigma": 2.0}},
+         "additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape "
+         "preserved. Severities matched to radar_gaussian_noise's per user decision "
+         "2026-08-18 (was 0.04/0.08/0.12, CommonCorruption's gaussian_rad levels 1/3/5 -- see "
+         "docs/lit_survey/noise_addition/parameter_audit.md for that source's caveats, "
+         "including that it perturbs spherical-radial r, not isotropic Cartesian xyz as "
+         "implemented here, and was calibrated for KITTI/Velodyne, not K-Radar's Ouster "
+         "os2-64/os1-128 LiDARs)."),
         ("loss_partial",
          {"low": {"fraction": 0.1}, "medium": {"fraction": 0.3}, "high": {"fraction": 0.7}},
          "fraction of lidar points zeroed in place; row count preserved"),

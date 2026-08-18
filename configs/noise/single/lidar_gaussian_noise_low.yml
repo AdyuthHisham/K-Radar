@@ -1,6 +1,6 @@
 # Single-corruption run: lidar / gaussian_noise (low)
 #
-# additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape preserved
+# additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape preserved. Severities matched to radar_gaussian_noise's per user decision 2026-08-18 (was 0.04/0.08/0.12, CommonCorruption's gaussian_rad levels 1/3/5 -- see docs/lit_survey/noise_addition/parameter_audit.md for that source's caveats, including that it perturbs spherical-radial r, not isotropic Cartesian xyz as implemented here, and was calibrated for KITTI/Velodyne, not K-Radar's Ouster os2-64/os1-128 LiDARs).
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -12,5 +12,5 @@ lidar:
   - name: gaussian_noise
     p: 1.0
     params:
-      sigma: 0.04
+      sigma: 0.1
 camera: []
