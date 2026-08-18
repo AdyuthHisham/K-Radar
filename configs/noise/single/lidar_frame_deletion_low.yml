@@ -1,6 +1,6 @@
 # Single-corruption run: lidar / frame_deletion (low)
 #
-# lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies
+# lidar frame deterministically deleted every Nth frame (interval); sets ldr64 to None -> blackout policy applies
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -12,6 +12,6 @@ lidar:
   - name: frame_deletion
     p: 1.0
     params:
-      mode: random
-      p: 0.1
+      mode: deterministic
+      interval: 19
 camera: []

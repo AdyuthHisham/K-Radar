@@ -1,6 +1,6 @@
 # Single-corruption run: camera / frame_deletion (high)
 #
-# camera frame randomly deleted with probability p; writes a black-image tensor, never None
+# camera frame deterministically deleted every Nth frame (interval); writes a black-image tensor, never None
 #
 # Exactly one effect on exactly one modality -- every other sensor is original
 # -- so any change in detections versus the original baseline is attributable
@@ -13,5 +13,5 @@ camera:
   - name: frame_deletion
     p: 1.0
     params:
-      mode: random
-      p: 0.9
+      mode: deterministic
+      interval: 2

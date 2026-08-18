@@ -56,9 +56,9 @@ becomes "medium" and 50 becomes "high", consistent with the doc throughout,
 confirmed 2026-08-17). Every other effect's low/high values already matched
 the doc; medium is new for all of them.
 
-`frame_deletion` uses `mode: random, p: <low|medium|high>` (not the earlier
-`mode: deterministic, interval: 2`) to match the severity table's
-probability-based parameterization.
+`frame_deletion` uses `mode: deterministic, interval: <19|5|2>` (see
+FRAME_DELETION_PARAMS above) -- switched from an earlier `mode: random,
+p: 0.1/0.5/0.9` per user decision 2026-08-18.
 
 Usage:
     python scripts/alvis/gen_single_effect_configs.py
@@ -69,13 +69,28 @@ import os
 
 OUT_DIR = os.path.join("configs", "noise", "single")
 
+# 2026-08-18: frame_deletion switched from mode: random (p=0.1/0.5/0.9) to
+# mode: deterministic (interval=19/5/2), per user decision. Deterministic
+# mode deletes every Nth frame (frame_index % interval == 0 -- frame 0 is
+# always deleted, per _frame_deletion_check in noise_injection.py), not a
+# per-frame random draw, so results no longer depend on the RNG's per-
+# modality sub-seed landing an early "fire" or not (that was the source of
+# the seed-dependent radar-vs-lidar frame_deletion_low crash-timing
+# difference found in the 10-sequence test run -- see the Obsidian note).
+# interval=19 (~5% of frames), interval=5 (~20%), interval=2 (every other
+# frame, ~50%) -- exact values per user instruction, not derived from the
+# earlier probability values.
+FRAME_DELETION_PARAMS = {
+    "low": {"mode": "deterministic", "interval": 19},
+    "medium": {"mode": "deterministic", "interval": 5},
+    "high": {"mode": "deterministic", "interval": 2},
+}
+
 # (effect_name, {"low": params, "medium": params, "high": params}, note) per modality.
 SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
     "radar": [
-        ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
-          "high": {"mode": "random", "p": 0.9}},
-         "radar frame randomly deleted with probability p; sets rdr_sparse to None -> blackout policy applies"),
+        ("frame_deletion", FRAME_DELETION_PARAMS,
+         "radar frame deterministically deleted every Nth frame (interval); sets rdr_sparse to None -> blackout policy applies"),
         # "noise_induced_shifts" intentionally excluded as of 2026-08-17 --
         # DISABLED in datasets/effects/noise_injection.py pending an SNR-dial
         # reparameterization decision (see TODO at radar_noise_induced_shifts()'s
@@ -90,10 +105,8 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "fraction of radar detections zeroed in place; row count preserved"),
     ],
     "lidar": [
-        ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
-          "high": {"mode": "random", "p": 0.9}},
-         "lidar frame randomly deleted with probability p; sets ldr64 to None -> blackout policy applies"),
+        ("frame_deletion", FRAME_DELETION_PARAMS,
+         "lidar frame deterministically deleted every Nth frame (interval); sets ldr64 to None -> blackout policy applies"),
         ("gaussian_noise",
          {"low": {"sigma": 0.1}, "medium": {"sigma": 1.0}, "high": {"sigma": 2.0}},
          "additive N(0, sigma) on lidar xyz, isotropic (xy/z split dropped 2026-08-17); shape "
@@ -108,10 +121,8 @@ SEVERITY_EFFECTS: dict[str, list[tuple[str, dict, str]]] = {
          "fraction of lidar points zeroed in place; row count preserved"),
     ],
     "camera": [
-        ("frame_deletion",
-         {"low": {"mode": "random", "p": 0.1}, "medium": {"mode": "random", "p": 0.5},
-          "high": {"mode": "random", "p": 0.9}},
-         "camera frame randomly deleted with probability p; writes a black-image tensor, never None"),
+        ("frame_deletion", FRAME_DELETION_PARAMS,
+         "camera frame deterministically deleted every Nth frame (interval); writes a black-image tensor, never None"),
         ("gaussian_noise",
          {"low": {"sigma": 20.0}, "medium": {"sigma": 50.0}, "high": {"sigma": 80.0}},
          "additive N(0, sigma) in 0-255 image units"),
