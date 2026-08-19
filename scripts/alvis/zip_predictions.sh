@@ -47,8 +47,9 @@ if [ -f "$ZIP_PATH" ]; then
   rm -f "$ZIP_PATH"
 fi
 
-echo "Zipping into $ZIP_PATH ..."
-zip -q "$ZIP_PATH" -@ < "$FILELIST"
+echo "Zipping into $ZIP_PATH (store mode, -0, no compression -- the actual" \
+     "problem is file COUNT not byte size, so skip the CPU-bound deflate work)..."
+zip -q -0 "$ZIP_PATH" -@ < "$FILELIST"
 
 N_IN_ZIP=$(unzip -l "$ZIP_PATH" | tail -1 | awk '{print $2}')
 echo "Zip written: $ZIP_PATH"
