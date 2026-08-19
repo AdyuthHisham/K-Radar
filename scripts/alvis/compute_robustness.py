@@ -113,6 +113,32 @@ def _rb(original_val: float, corrupted_val: float) -> float | None:
     return corrupted_val / original_val
 
 
+_SEVERITY_TIERS = ("low", "medium", "high")
+
+
+def compute_cri(rb_by_severity: dict[str, float]) -> float | None:
+    """CRI (RoHOI): retention with a variance penalty across the Low/Med/High
+    severity tiers of ONE effect (e.g. camera_gaussian_noise_{low,medium,high}).
+
+    CRI = mean(Rb) - stdev(Rb), over whichever of the 3 tiers are present.
+    Rewards high retention that is ALSO stable across severities -- an effect
+    whose Rb swings wildly between tiers (e.g. 0.95/0.90/0.20) scores worse
+    than one with the same mean but low variance (0.70/0.68/0.67), unlike
+    mean-Rb/mRb alone which can't distinguish them.
+
+    Requires at least 2 severity tiers to compute a variance term (stdev of
+    a single value is 0, which would silently treat a single-tier effect as
+    "perfectly stable" -- misleading). Returns None if fewer than 2 tiers
+    have a non-null Rb, consistent with this module's convention of not
+    silently substituting a default for missing data (see condition_name's
+    "no_predictions" handling above).
+    """
+    values = [v for k, v in rb_by_severity.items() if k in _SEVERITY_TIERS and v is not None]
+    if len(values) < 2:
+        return None
+    return statistics.mean(values) - statistics.stdev(values)
+
+
 def compute_condition_report(original_blocks: list[dict], corrupted_blocks: list[dict],
                               condition_name: str) -> dict[str, Any]:
     """Compute Rb^c rows for one corrupted condition against the original blocks."""
@@ -191,6 +217,24 @@ def main() -> None:
         conditions.append(compute_condition_report(original_blocks, corrupted_blocks, condition_name))
 
     overall_rb = [c["mean_rb"] for c in conditions if c["mean_rb"] is not None]
+
+    # CRI: group conditions by effect (condition name with the trailing
+    # _low/_medium/_high severity token stripped -- "original" and any
+    # condition with no severity suffix have no CRI, same as a 1-tier effect).
+    rb_by_effect: dict[str, dict[str, float]] = {}
+    for c in conditions:
+        if c["mean_rb"] is None:
+            continue
+        tokens = c["condition_name"].split("_")
+        if tokens and tokens[-1] in _SEVERITY_TIERS:
+            effect, severity = "_".join(tokens[:-1]), tokens[-1]
+            rb_by_effect.setdefault(effect, {})[severity] = c["mean_rb"]
+
+    cri_by_effect = {
+        effect: compute_cri(sev_rb) for effect, sev_rb in rb_by_effect.items()
+    }
+    cri_values = [v for v in cri_by_effect.values() if v is not None]
+
     report = {
         "sequence": args.seq,
         "original_dir": args.original_dir,
@@ -199,6 +243,8 @@ def main() -> None:
         "n_conditions_with_results": sum(1 for c in conditions if c["status"] == "ok"),
         "n_conditions_no_predictions": sum(1 for c in conditions if c["status"] == "no_predictions"),
         "mean_mRb": statistics.mean(overall_rb) if overall_rb else None,
+        "cri_by_effect": cri_by_effect,
+        "mean_cri": statistics.mean(cri_values) if cri_values else None,
         "conditions": conditions,
     }
 
@@ -232,6 +278,10 @@ def _write_markdown(report: dict, path: str) -> None:
         f"{report['mean_mRb']:.3f}**" if report["mean_mRb"] is not None
         else "**mean mRb: n/a (no conditions produced results)**",
         "",
+        f"**mean CRI across effects with >=2 severity tiers: "
+        f"{report['mean_cri']:.3f}**" if report["mean_cri"] is not None
+        else "**mean CRI: n/a (no effect had >=2 severity tiers with results)**",
+        "",
         "| Condition | Status | mean Rb^c | min Rb^c | max Rb^c |",
         "|---|---|---|---|---|",
     ]
@@ -240,6 +290,12 @@ def _write_markdown(report: dict, path: str) -> None:
         min_s = f"{c['min_rb']:.3f}" if c["min_rb"] is not None else "—"
         max_s = f"{c['max_rb']:.3f}" if c["max_rb"] is not None else "—"
         lines.append(f"| {c['condition_name']} | {c['status']} | {mean_s} | {min_s} | {max_s} |")
+
+    if report["cri_by_effect"]:
+        lines += ["", "| Effect | CRI |", "|---|---|"]
+        for effect, cri in sorted(report["cri_by_effect"].items()):
+            cri_s = f"{cri:.3f}" if cri is not None else "—"
+            lines.append(f"| {effect} | {cri_s} |")
 
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
